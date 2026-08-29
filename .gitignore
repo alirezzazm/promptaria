@@ -1,0 +1,20 @@
+# runtime data — the SQLite catalogue is rebuilt by `npm run scrape`
+data/
+logs/
+
+# secrets
+ADMIN_PASSWORD.txt
+.env
+.env.*
+
+# generated Instagram carousel renders
+public/ig/
+
+node_modules/
+npm-debug.log*
+*.tgz
+.DS_Store
+Thumbs.db
+
+# ...but the template is meant to be committed
+!.env.example

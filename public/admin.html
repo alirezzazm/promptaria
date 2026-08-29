@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>پنل مدیریت — Promptaria</title>
+<meta name="robots" content="noindex,nofollow">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚙</text></svg>">
+<link rel="stylesheet" href="/styles.css">
+<style>
+  .adm-wrap { max-width: 1400px; margin: 0 auto; padding: 0 20px; }
+  .login-card { max-width: 380px; margin: 14vh auto; background: var(--card-solid); border: 1px solid var(--border); border-radius: 20px; padding: 32px; box-shadow: var(--shadow); }
+  .login-card h2 { margin: 0 0 6px; font-size: 20px; }
+  .login-card p { margin: 0 0 22px; color: var(--dim); font-size: 13px; }
+  .fld { width: 100%; padding: 13px 15px; background: #0c0d16; border: 1px solid var(--border); border-radius: 12px; color: var(--text); font-family: inherit; font-size: 14px; outline: none; }
+  .fld:focus { border-color: var(--accent); }
+  .btn { padding: 11px 18px; border-radius: 11px; border: 1px solid var(--border); background: var(--card-solid); color: var(--text); font-size: 13px; transition: .16s; }
+  .btn:hover { border-color: var(--accent); }
+  .btn.primary { background: linear-gradient(135deg, var(--accent), #6247e0); border-color: transparent; color: #fff; font-weight: 600; }
+  .btn.danger { color: #fda4af; border-color: #fb718533; }
+  .btn.wide { width: 100%; padding: 13px; }
+  .err { color: #fda4af; font-size: 13px; margin-top: 12px; min-height: 18px; }
+
+  .adm-head { display: flex; align-items: center; gap: 16px; height: 66px; border-bottom: 1px solid var(--border-soft); margin-bottom: 26px; }
+  .tabs { display: flex; gap: 6px; margin-inline-start: auto; }
+  .tab { padding: 8px 15px; border-radius: 10px; background: transparent; border: 1px solid transparent; color: var(--muted); font-size: 13.5px; }
+  .tab:hover { background: #ffffff0d; color: var(--text); }
+  .tab.on { background: var(--accent); color: #fff; border-color: transparent; font-weight: 600; }
+
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 13px; margin-bottom: 26px; }
+  .kpi { background: var(--card-solid); border: 1px solid var(--border-soft); border-radius: 15px; padding: 17px 19px; }
+  .kpi b { display: block; font-size: 26px; font-weight: 800; line-height: 1.35; }
+  .kpi span { font-size: 12.5px; color: var(--dim); }
+  .kpi.a b { color: var(--accent-2); } .kpi.g b { color: var(--green); } .kpi.y b { color: var(--gold); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: right; padding: 11px 12px; color: var(--dim); font-weight: 500; font-size: 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  td { padding: 12px; border-bottom: 1px solid var(--border-soft); vertical-align: middle; }
+  tr:hover td { background: #ffffff05; }
+  .panel { background: var(--card-solid); border: 1px solid var(--border-soft); border-radius: 17px; overflow: hidden; margin-bottom: 22px; }
+  .panel > h3 { margin: 0; padding: 16px 19px; font-size: 14.5px; border-bottom: 1px solid var(--border-soft); display: flex; align-items: center; gap: 10px; }
+  .panel > h3 .sp { margin-inline-start: auto; display: flex; gap: 8px; align-items: center; }
+  .panel .inner { padding: 19px; }
+  .tbl-scroll { overflow-x: auto; }
+
+  .srclink { color: var(--accent-2); font-size: 11.5px; direction: ltr; display: inline-block; max-width: 330px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+  .srclink:hover { text-decoration: underline; }
+  .dot-s { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-inline-end: 6px; }
+  .dot-s.ok { background: var(--green); } .dot-s.error { background: #fb7185; } .dot-s.none { background: var(--dim); }
+  .sw { width: 40px; height: 22px; border-radius: 999px; background: #3a3d63; border: none; position: relative; cursor: pointer; transition: .18s; }
+  .sw::after { content: ''; position: absolute; top: 3px; right: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: .18s; }
+  .sw.on { background: var(--green); } .sw.on::after { right: 21px; }
+  .logbox { background: #0a0b12; border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; font-family: 'JetBrains Mono', monospace; font-size: 11.5px; direction: ltr; text-align: left; max-height: 300px; overflow-y: auto; line-height: 1.9; color: #b8bde0; white-space: pre-wrap; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .hidden { display: none !important; }
+  .badge-s { font-size: 11px; padding: 2px 8px; border-radius: 6px; background: #ffffff0d; border: 1px solid var(--border-soft); color: var(--muted); }
+  .badge-s.pub { color: var(--green); border-color: #34d39930; }
+  .badge-s.hid { color: #fda4af; border-color: #fb718530; }
+  .editgrid { display: grid; gap: 14px; }
+  .editgrid label { font-size: 12.5px; color: var(--muted); display: block; margin-bottom: 6px; }
+  textarea.fld { min-height: 150px; resize: vertical; line-height: 1.8; }
+  .ig-cols { display: grid; grid-template-columns: 1.15fr 1fr; gap: 22px; align-items: start; }
+  .ig-slides { display: flex; gap: 14px; overflow-x: auto; padding: 6px 2px 14px; scroll-snap-type: x mandatory; }
+  .ig-slides canvas { width: 216px; height: 270px; border-radius: 14px; border: 1px solid var(--border); flex: 0 0 auto; scroll-snap-align: start; background: #0a0a12; cursor: zoom-in; transition: .18s; }
+  .ig-slides canvas:hover { border-color: var(--accent); transform: translateY(-3px); }
+  .cap { white-space: pre-wrap; font-size: 13px; line-height: 2; background: #0c0d16; border: 1px solid var(--border); border-radius: 13px; padding: 16px 18px; max-height: 420px; overflow-y: auto; }
+  .conn { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; padding: 4px 12px; border-radius: 999px; border: 1px solid var(--border-soft); }
+  .conn.on { color: var(--green); border-color: #34d39940; background: #34d39912; }
+  .conn.off { color: var(--gold); border-color: #fbbf2440; background: #fbbf2412; }
+  .zoomwrap { position: fixed; inset: 0; background: #05050be6; display: grid; place-items: center; z-index: 300; padding: 24px; }
+  .zoomwrap img { max-width: min(92vw, 520px); max-height: 92vh; border-radius: 18px; box-shadow: var(--shadow); }
+  @media (max-width: 980px) { .ig-cols { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<!-- login -->
+<div id="login">
+  <div class="login-card">
+    <div class="logo" style="margin-bottom:18px"><span class="mark">✦</span><span>Promptaria<small>پنل مدیریت</small></span></div>
+    <h2>ورود ادمین</h2>
+    <p>برای دیدن منابع، لینک‌ها و مدیریت پرامپت‌ها وارد شو.</p>
+    <input class="fld" id="pw" type="password" placeholder="رمز عبور" autocomplete="current-password">
+    <div class="err" id="loginErr"></div>
+    <button class="btn primary wide" id="loginBtn" style="margin-top:6px">ورود</button>
+  </div>
+</div>
+
+<!-- panel -->
+<div id="panel" class="adm-wrap hidden">
+  <div class="adm-head">
+    <a href="/" class="logo"><span class="mark">✦</span><span>Promptaria<small>ADMIN</small></span></a>
+    <div class="tabs">
+      <button class="tab on" data-tab="dash">داشبورد</button>
+      <button class="tab" data-tab="prompts">پرامپت‌ها</button>
+      <button class="tab" data-tab="sources">منابع و اسکرپر</button>
+      <button class="tab" data-tab="insta">اینستاگرام</button>
+      <button class="tab" data-tab="settings">تنظیمات</button>
+      <button class="tab" id="logout">خروج</button>
+    </div>
+  </div>
+
+  <section id="tab-dash"></section>
+  <section id="tab-prompts" class="hidden"></section>
+  <section id="tab-sources" class="hidden"></section>
+  <section id="tab-insta" class="hidden"></section>
+  <section id="tab-settings" class="hidden"></section>
+</div>
+
+<div class="overlay" id="overlay"><div class="sheet" id="sheet"></div></div>
+<div class="toast" id="toast"></div>
+
+<script src="/ig-studio.js"></script>
+<script src="/admin.js"></script>
+<script src="/admin-ig.js"></script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+{
+  "name": "promptaria",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Promptaria - curated & auto-updating AI prompt library",
+  "type": "commonjs",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "scrape": "node scraper/run.js",
+    "seed": "node server/seed.js",
+    "reenrich": "node server/reenrich.js"
+  },
+  "dependencies": {
+    "cheerio": "^1.0.0",
+    "cookie-parser": "^1.4.6",
+    "express": "^4.19.2"
+  }
+}
