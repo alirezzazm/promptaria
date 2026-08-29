@@ -305,7 +305,8 @@ a.pill:hover { border-color: var(--accent); color: var(--text); }
 
 .prompt-box { position: relative; }
 .prompt-box pre {
-  margin: 0; padding: 20px; background: #0c0d16; border: 1px solid var(--border);
+  /* extra headroom so the floating copy button never lands on the first line */
+  margin: 0; padding: 64px 20px 20px; background: #0c0d16; border: 1px solid var(--border);
   border-radius: 14px; white-space: pre-wrap; word-break: break-word; direction: ltr; text-align: left;
   font-size: 12.8px; line-height: 1.95; max-height: 440px; overflow-y: auto; color: #dfe3ff;
 }
