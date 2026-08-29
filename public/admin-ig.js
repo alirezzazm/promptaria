@@ -94,8 +94,8 @@ async function composeIg(uid) {
         <div class="ig-slides" id="igSlides"></div>
         <div class="row" style="margin-top:6px">
           <button class="btn" id="igDownload">دانلود تصاویر</button>
-          <button class="btn" id="igSave">ذخیره روی سرور</button>
-          <button class="btn primary" id="igPublish">انتشار در اینستاگرام</button>
+          <button class="btn primary" id="igKit">ساخت لینک موبایل</button>
+          <button class="btn" id="igPublish">انتشار مستقیم</button>
         </div>
         <div class="logbox" id="igLog" style="margin-top:14px;display:none"></div>
       </div>
@@ -140,11 +140,64 @@ async function composeIg(uid) {
     });
     toast('تصاویر دانلود شدند');
   };
-  $('#igSave').onclick = () => sendSlides('/api/admin/ig/render-only');
+  $('#igKit').onclick = makeKit;
   $('#igPublish').onclick = () => {
     if (!confirm('این پست همین حالا روی صفحه اینستاگرام منتشر می‌شود. مطمئنی؟')) return;
     sendSlides('/api/admin/ig/publish');
   };
+}
+
+/**
+ * The no-API handoff: park the render behind a private link and show a QR so
+ * the post can be finished from the phone's own Instagram app.
+ */
+async function makeKit() {
+  const log = $('#igLog');
+  log.style.display = 'block';
+  log.textContent = 'در حال آماده‌سازی تصاویر…';
+
+  const images = window.IGStudio.toDataUrls(igState.canvases, 'image/jpeg');
+  const r = await api('/api/admin/ig/kit', {
+    method: 'POST',
+    body: {
+      uid: igState.post.uid,
+      title: igState.post.title,
+      caption: $('#igCaption').value,
+      hashtags: igState.post.first_comment,
+      images,
+    },
+  });
+  if (r.error) {
+    log.textContent = 'خطا: ' + r.error;
+    toast(r.error, false);
+    return;
+  }
+
+  log.innerHTML = '';
+  log.style.display = 'none';
+  const box = document.createElement('div');
+  box.className = 'kitbox';
+  box.innerHTML = `
+    <div class="kitqr">${r.qr}</div>
+    <div class="kitinfo">
+      <b>لینک آماده است</b>
+      <p>با دوربین گوشی QR را اسکن کن، یا لینک را برای خودت بفرست. در صفحه‌ای که باز می‌شود
+         تصاویر را ذخیره می‌کنی و کپشن را با یک لمس کپی می‌کنی.</p>
+      <input class="fld" id="kitUrl" readonly value="${esc(r.url)}">
+      <div class="row" style="margin-top:10px">
+        <button class="btn primary" id="kitCopy" type="button">کپی لینک</button>
+        <a class="btn" href="${esc(r.url)}" target="_blank" rel="noopener">باز کردن</a>
+        <span style="font-size:12px;color:var(--dim)">اعتبار: ${r.expiresInHours} ساعت</span>
+      </div>
+    </div>`;
+  log.parentNode.insertBefore(box, log);
+  $('#kitCopy').onclick = () => {
+    const el = $('#kitUrl');
+    el.select();
+    navigator.clipboard.writeText(el.value);
+    toast('لینک کپی شد');
+  };
+  toast('کیت پست ساخته شد');
 }
 
 function zoomSlide(canvas) {

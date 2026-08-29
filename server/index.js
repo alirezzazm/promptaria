@@ -10,6 +10,7 @@ const { ensureCategories } = require('./categories');
 const { runAll, syncSources } = require('../scraper/run');
 const seo = require('./seo');
 const ig = require('./instagram');
+const postkit = require('./postkit');
 
 const PORT = Number(process.env.PORT || 3400);
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'promptaria';
@@ -472,6 +473,18 @@ app.post('/api/admin/ig/publish', bigJson, requireAdmin, (req, res) => {
   res.json({ ok: true, images: urls });
 });
 
+app.post('/api/admin/ig/kit', bigJson, requireAdmin, async (req, res) => {
+  try {
+    const { uid, title, caption, hashtags, images } = req.body || {};
+    const urls = ig.saveSlides(String(uid || 'post'), images);
+    const kit = postkit.createKit({ uid, title, caption, hashtags, images: urls });
+    kit.qr = await postkit.qrSvg(kit.url);
+    res.json({ ok: true, ...kit });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
 app.post('/api/admin/ig/render-only', bigJson, requireAdmin, (req, res) => {
   try {
     const urls = ig.saveSlides(String((req.body && req.body.uid) || 'post'), req.body && req.body.images);
@@ -531,6 +544,18 @@ app.get('/p/:slugUid', (req, res) => {
 
 // The admin shell is static, but its asset URLs get the same build stamp as the
 // public pages so a deploy never leaves a stale panel script cached.
+// Post kits live behind an unguessable, expiring token — the URL is the only
+// credential, so it must never be cached by a shared proxy or indexed.
+app.get('/kit/:token', (req, res) => {
+  const kit = postkit.getKit(req.params.token);
+  res
+    .type('html')
+    .set('Cache-Control', 'private, no-store')
+    .set('X-Robots-Tag', 'noindex, nofollow')
+    .status(kit ? 200 : 404)
+    .send(kit ? postkit.renderKit(kit) : postkit.renderExpired());
+});
+
 app.get('/admin', (req, res) => {
   let page = fs.readFileSync(path.join(PUB, 'admin.html'), 'utf8');
   page = page.replace(/(href|src)="\/(styles\.css|admin\.js|admin-ig\.js|ig-studio\.js)"/g,

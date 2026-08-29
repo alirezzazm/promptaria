@@ -830,6 +830,7 @@ Allow: /
 Disallow: /admin
 Disallow: /api/
 Disallow: /search
+Disallow: /kit/
 
 Sitemap: ${SITE}/sitemap.xml
 `;

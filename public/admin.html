@@ -69,6 +69,15 @@
   .conn.off { color: var(--gold); border-color: #fbbf2440; background: #fbbf2412; }
   .zoomwrap { position: fixed; inset: 0; background: #05050be6; display: grid; place-items: center; z-index: 300; padding: 24px; }
   .zoomwrap img { max-width: min(92vw, 520px); max-height: 92vh; border-radius: 18px; box-shadow: var(--shadow); }
+  .kitbox { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; margin-top: 16px; padding: 18px;
+            border: 1px solid var(--border); border-radius: 16px; background: #0c0d16; }
+  .kitqr { width: 150px; height: 150px; flex: 0 0 auto; }
+  .kitqr svg { width: 100%; height: 100%; }
+  .kitinfo { flex: 1; min-width: 260px; }
+  .kitinfo b { font-size: 14px; }
+  .kitinfo p { color: var(--muted); font-size: 12.5px; line-height: 1.95; margin: 6px 0 12px; }
+  .kitinfo .fld { font-size: 12px; direction: ltr; text-align: left; }
+  .kitinfo a.btn { display: inline-flex; align-items: center; }
   @media (max-width: 980px) { .ig-cols { grid-template-columns: 1fr; } }
 </style>
 </head>
