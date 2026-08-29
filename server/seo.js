@@ -151,7 +151,8 @@ const header = (active = '') => `
       <a href="/"${active === 'home' ? ' aria-current="page"' : ''}>خانه</a>
       <a href="/categories"${active === 'cats' ? ' aria-current="page"' : ''}>دسته‌بندی‌ها</a>
       <a href="/guide"${active === 'guide' ? ' aria-current="page"' : ''}>راهنمای پرامپت‌نویسی</a>
-      <a href="/admin" class="cta">ورود ادمین</a>
+      <!-- No admin link anywhere in the public chrome: /admin is reached by
+           typing it. The password is still what protects the panel. -->
     </nav>
   </div>
 </header>`;
@@ -163,7 +164,7 @@ const footer = (cats = []) => `
       ${cats.map((c) => `<a href="/c/${esc(c.slug)}">${esc(c.icon)} ${esc(c.name_fa)}</a>`).join('')}
     </nav>
     <p><b>${NAME}</b> — کتابخانه پرامپت‌های هوش مصنوعی به زبان فارسی. پرامپت‌ها از مجموعه‌های معتبر جهانی گردآوری و برای فارسی‌زبان‌ها بازنویسی و مستند می‌شوند.</p>
-    <p class="dim"><a href="/guide">راهنمای پرامپت‌نویسی</a> · <a href="/categories">همه دسته‌ها</a> · <a href="/sitemap.xml">نقشه سایت</a> · <a href="/admin">پنل مدیریت</a></p>
+    <p class="dim"><a href="/guide">راهنمای پرامپت‌نویسی</a> · <a href="/categories">همه دسته‌ها</a> · <a href="/sitemap.xml">نقشه سایت</a></p>
   </div>
 </footer>`;
 
