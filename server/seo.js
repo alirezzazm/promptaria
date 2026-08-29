@@ -16,7 +16,11 @@ const db = require('./db');
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 const assetV = (() => {
   try {
-    const stamps = ['app.js', 'styles.css'].map((f) => fs.statSync(path.join(PUBLIC_DIR, f)).mtimeMs);
+    // every versioned asset counts, admin bundles included — otherwise a panel-only
+    // change keeps the old stamp and browsers serve the cached script
+    const stamps = ['app.js', 'styles.css', 'admin.js', 'admin-ig.js', 'ig-studio.js'].map(
+      (f) => fs.statSync(path.join(PUBLIC_DIR, f)).mtimeMs
+    );
     return String(Math.round(Math.max(...stamps))).slice(-9);
   } catch {
     return '1';

@@ -163,7 +163,7 @@ async function sendSlides(endpoint) {
   log.style.display = 'block';
   log.textContent = 'در حال آماده‌سازی تصاویر…';
 
-  const images = window.IGStudio.toDataUrls(igState.canvases);
+  const images = window.IGStudio.toDataUrls(igState.canvases, 'image/jpeg');
   const r = await api(endpoint, {
     method: 'POST',
     body: { uid: igState.post.uid, caption: $('#igCaption').value, images },

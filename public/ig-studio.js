@@ -264,6 +264,9 @@
     H,
     drawSlide,
     renderAll,
-    toDataUrls: (canvases) => canvases.map((c) => c.toDataURL('image/png')),
+    // Instagram's content-publishing API accepts JPEG only, so anything headed
+    // for the Graph API must be encoded as JPEG; PNG is for local downloads.
+    toDataUrls: (canvases, type = 'image/png') =>
+      canvases.map((c) => c.toDataURL(type, type === 'image/jpeg' ? 0.92 : undefined)),
   };
 })();
