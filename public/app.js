@@ -17,6 +17,11 @@ const FA = (n) => String(n).replace(/\d/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[d]);
 const DIFF_FA = { easy: 'ساده', medium: 'متوسط', advanced: 'پیشرفته' };
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+/** The assistant's prose carries **bold** emphasis; render just that, escaped. */
+function mdLite(text) {
+  return esc(text).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+}
+
 function timeAgo(iso) {
   if (!iso) return '—';
   const mins = Math.round((Date.now() - new Date(iso.replace(' ', 'T') + 'Z').getTime()) / 60000);
@@ -270,10 +275,119 @@ function wireCatalog() {
   window.addEventListener('popstate', () => location.reload());
 }
 
+
+/* ------------------------------------------------------------------ *
+ * پرامپت‌یار — the search assistant
+ *
+ * The hero box does double duty: it filters the catalogue as you type, and
+ * pressing the button asks the assistant to read the request properly and
+ * build a prompt around it. Without JS the same box still submits to /search.
+ * ------------------------------------------------------------------ */
+function assistHtml(d) {
+  const u = d.understood || {};
+  const chips = [
+    u.category_name && ['حوزه', u.category_name],
+    u.audience && ['مخاطب', u.audience],
+    u.tone && ['لحن', u.tone],
+    u.format && ['قالب', u.format],
+  ].filter(Boolean);
+
+  return `
+  <div class="assist-card">
+    <div class="assist-head">
+      <span class="assist-badge">پرامپت‌یار</span>
+      <button class="assist-close" id="assistClose" type="button" aria-label="بستن">✕</button>
+    </div>
+
+    ${chips.length ? `<div class="kv assist-chips">${chips
+      .map(([k, v]) => `<span class="pill"><b>${esc(k)}:</b> ${esc(v)}</span>`)
+      .join('')}</div>` : ''}
+
+    <div class="assist-say">${d.explanation.map((p) => `<p>${mdLite(p)}</p>`).join('')}</div>
+
+    <div class="assist-prompt">
+      <div class="assist-label">پرامپت ساخته‌شده برای همین خواسته</div>
+      <div class="prompt-box">
+        <button class="copybtn" id="assistCopy" type="button">کپی</button>
+        <pre id="assistText">${esc(d.generated_prompt)}</pre>
+      </div>
+    </div>
+
+    ${d.matches.length ? `
+      <div class="assist-label">پرامپت‌های آماده‌ای که به کارت می‌آیند</div>
+      <div class="assist-matches">
+        ${d.matches.map((m) => `
+          <a class="assist-match" href="${esc(m.url)}">
+            <span class="am-ico" aria-hidden="true">${esc(m.category_icon || '✦')}</span>
+            <span class="am-body">
+              <b>${esc(m.title)}</b>
+              <small>${esc(m.reason)}</small>
+            </span>
+          </a>`).join('')}
+      </div>` : ''}
+  </div>`;
+}
+
+function wireAssistant() {
+  const box = $('#assist');
+  const input = $('#q');
+  const btn = $('#askBtn');
+  if (!box || !input || !btn) return;
+
+  async function ask() {
+    const q = input.value.trim();
+    if (q.length < 3) {
+      input.focus();
+      toast('یک جمله بنویس که بگوید می‌خواهی چه کار کنی');
+      return;
+    }
+    box.hidden = false;
+    box.innerHTML = '<div class="assist-card"><div class="skeleton" style="height:150px"></div></div>';
+    box.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'nearest' });
+
+    let d;
+    try {
+      d = await fetch('/api/assist', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ q }),
+      }).then((r) => r.json());
+    } catch {
+      box.innerHTML = '<div class="assist-card">ارتباط با سرور برقرار نشد. دوباره امتحان کن.</div>';
+      return;
+    }
+
+    if (!d.ok) {
+      box.innerHTML = `<div class="assist-card">${esc(d.error || 'نتوانستم درخواست را بخوانم.')}</div>`;
+      return;
+    }
+
+    box.innerHTML = assistHtml(d);
+    $('#assistClose').onclick = () => {
+      box.hidden = true;
+      box.innerHTML = '';
+    };
+    $('#assistCopy').onclick = (e) => copyPrompt(e.currentTarget, $('#assistText').textContent, null);
+  }
+
+  btn.addEventListener('click', (e) => {
+    e.preventDefault();
+    ask();
+  });
+  input.addEventListener('keydown', (e) => {
+    // Enter asks the assistant; the live filter keeps running on plain typing
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      ask();
+    }
+  });
+}
+
 /* ------------------------------------------------------------------ */
 document.addEventListener('DOMContentLoaded', () => {
   wireCopy();
   wireCatalog();
+  wireAssistant();
   animateCounters();
   scrollReveal();
   readingProgress();

@@ -14,6 +14,7 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
         PORT: 3400,
+        SITE_URL: 'https://promptaria.ir',
       },
       error_file: 'C:\\Users\\Administrator\\Desktop\\claud\\promptaria\\logs\\err.log',
       out_file: 'C:\\Users\\Administrator\\Desktop\\claud\\promptaria\\logs\\out.log',

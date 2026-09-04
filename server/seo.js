@@ -266,9 +266,16 @@ ${header('home')}
     </p>
     <form class="searchbar reveal d2" role="search" action="/search" method="get">
       <span class="icon" aria-hidden="true">⌕</span>
-      <label class="sr-only" for="q">جستجوی پرامپت</label>
-      <input id="q" name="q" type="search" placeholder="دنبال چی می‌گردی؟ رزومه، تحلیل داده، اینستاگرام، ریفکتور کد…" autocomplete="off">
+      <label class="sr-only" for="q">بگو می‌خواهی با هوش مصنوعی چه کار کنی</label>
+      <input id="q" name="q" type="search"
+             placeholder="بنویس می‌خواهی چه کار کنی… مثلاً «برای فروشگاهم کپشن اینستاگرام بنویسم»"
+             autocomplete="off">
+      <button type="submit" class="ask-btn" id="askBtn">پرامپت‌یار</button>
     </form>
+    <p class="ask-hint reveal d2">
+      لازم نیست کلمه‌ی دقیق را بدانی — به زبان خودت بنویس، پرامپت‌یار می‌فهمد و برایت پرامپت می‌سازد.
+    </p>
+    <div class="assist" id="assist" hidden aria-live="polite"></div>
     <div class="stats-row reveal d3">
       <div class="stat"><b class="counter" data-to="${total}">${total.toLocaleString('en-US')}</b><span>پرامپت آماده</span></div>
       <div class="stat"><b class="counter" data-to="${cats.length}">${cats.length}</b><span>دسته‌بندی</span></div>

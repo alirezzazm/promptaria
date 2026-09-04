@@ -11,6 +11,7 @@ const { runAll, syncSources } = require('../scraper/run');
 const seo = require('./seo');
 const ig = require('./instagram');
 const postkit = require('./postkit');
+const assistant = require('./assistant');
 
 const PORT = Number(process.env.PORT || 3400);
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'promptaria';
@@ -167,6 +168,11 @@ app.post('/api/prompts/:uid/:action(copy|like)', (req, res) => {
   const col = req.params.action === 'copy' ? 'copies' : 'likes';
   const info = db.prepare(`UPDATE prompts SET ${col} = ${col} + 1 WHERE uid = ?`).run(req.params.uid);
   res.json({ ok: info.changes > 0 });
+});
+
+app.post('/api/assist', (req, res) => {
+  const q = (req.body && req.body.q) || '';
+  res.json(assistant.ask(q));
 });
 
 /* ------------------------------------------------------------------ *
