@@ -2,6 +2,7 @@
 data/
 logs/
 
+
 # secrets
 ADMIN_PASSWORD.txt
 .env
