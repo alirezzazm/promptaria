@@ -108,10 +108,15 @@ async function adapterGithubFiles(src) {
         .replace(/^#{1,3}\s.*\n/, '')                     // leading title heading
         .replace(/^!\[.*?\]\(.*?\)\s*$/gm, '')            // images
         .trim();
+      // Some repos give every file the same boilerplate heading (fabric's are all
+      // "IDENTITY and PURPOSE"), so a generic one loses to the folder name.
       const mdTitle = raw.match(/^#{1,3}\s+(.{3,120})$/m);
-      const title = (mdTitle ? mdTitle[1] : titleFromPath(f.path)).replace(/[#*`]/g, '').trim();
-      if (!okBody(body)) continue;
+      const heading = mdTitle ? mdTitle[1].replace(/[#*`]/g, '').trim() : '';
+      const generic = /^(identity|purpose|identity and purpose|overview|instructions?|system|prompt|role|about|steps|output|introduction)$/i;
       const folder = f.path.split('/').slice(-2, -1)[0] || '';
+      const fromPath = src.titleFromFolder && folder ? titleFromPath(folder) : titleFromPath(f.path);
+      const title = !heading || generic.test(heading) ? fromPath : heading;
+      if (!okBody(body)) continue;
       out.push({
         title,
         body,
