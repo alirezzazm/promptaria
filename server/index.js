@@ -12,6 +12,7 @@ const seo = require('./seo');
 const ig = require('./instagram');
 const postkit = require('./postkit');
 const assistant = require('./assistant');
+const pages = require('./pages');
 
 const PORT = Number(process.env.PORT || 3400);
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'promptaria';
@@ -513,6 +514,15 @@ app.post('/api/admin/settings', requireAdmin, (req, res) => {
  * Static + SPA routes
  * ------------------------------------------------------------------ */
 const PUB = path.join(__dirname, '..', 'public');
+
+// Carousel renders are meant to be fetched by other origins — Instagram's Graph
+// API pulls them, and the studio hands them to Business Suite in the browser.
+// They are already public URLs, so an open CORS header costs nothing.
+app.use('/ig', (req, res, next) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  next();
+});
+
 app.use(express.static(PUB, { maxAge: '7d', index: false }));
 
 const html = (res, body, status = 200) =>
@@ -532,6 +542,19 @@ app.get('/sitemap-prompts-:n.xml', (req, res) => {
 app.get('/', (req, res) => html(res, seo.renderHome()));
 app.get('/categories', (req, res) => html(res, seo.renderCategories()));
 app.get('/guide', (req, res) => html(res, seo.renderGuide()));
+
+/* --- authored content: articles, collections, the builder --- */
+app.get('/learn', (req, res) => html(res, pages.renderLearnIndex()));
+app.get('/learn/:slug', (req, res) => {
+  const out = pages.renderArticle(req.params.slug);
+  return out ? html(res, out) : html(res, seo.render404(), 404);
+});
+app.get('/collections', (req, res) => html(res, pages.renderCollectionsIndex()));
+app.get('/collections/:slug', (req, res) => {
+  const out = pages.renderCollection(req.params.slug);
+  return out ? html(res, out) : html(res, seo.render404(), 404);
+});
+app.get('/builder', (req, res) => html(res, pages.renderBuilder()));
 app.get('/search', (req, res) => html(res, seo.renderSearch(String(req.query.q || '').slice(0, 80))));
 
 app.get('/c/:slug', (req, res) => {

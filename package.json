@@ -9,7 +9,8 @@
     "start": "node server/index.js",
     "scrape": "node scraper/run.js",
     "seed": "node server/seed.js",
-    "reenrich": "node server/reenrich.js"
+    "reenrich": "node server/reenrich.js",
+    "seed:fa": "node server/seed-fa.js"
   },
   "dependencies": {
     "cheerio": "^1.0.0",

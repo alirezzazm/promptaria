@@ -153,8 +153,10 @@ const header = (active = '') => `
     </a>
     <nav aria-label="ناوبری اصلی">
       <a href="/"${active === 'home' ? ' aria-current="page"' : ''}>خانه</a>
+      <a href="/collections"${active === 'collections' ? ' aria-current="page"' : ''}>مجموعه‌ها</a>
       <a href="/categories"${active === 'cats' ? ' aria-current="page"' : ''}>دسته‌بندی‌ها</a>
-      <a href="/guide"${active === 'guide' ? ' aria-current="page"' : ''}>راهنمای پرامپت‌نویسی</a>
+      <a href="/learn"${active === 'learn' ? ' aria-current="page"' : ''}>آموزش</a>
+      <a href="/builder"${active === 'builder' ? ' aria-current="page"' : ''}>پرامپت‌ساز</a>
       <!-- No admin link anywhere in the public chrome: /admin is reached by
            typing it. The password is still what protects the panel. -->
     </nav>
@@ -168,7 +170,7 @@ const footer = (cats = []) => `
       ${cats.map((c) => `<a href="/c/${esc(c.slug)}">${esc(c.icon)} ${esc(c.name_fa)}</a>`).join('')}
     </nav>
     <p><b>${NAME}</b> — کتابخانه پرامپت‌های هوش مصنوعی به زبان فارسی. پرامپت‌ها از مجموعه‌های معتبر جهانی گردآوری و برای فارسی‌زبان‌ها بازنویسی و مستند می‌شوند.</p>
-    <p class="dim"><a href="/guide">راهنمای پرامپت‌نویسی</a> · <a href="/categories">همه دسته‌ها</a> · <a href="/sitemap.xml">نقشه سایت</a></p>
+    <p class="dim"><a href="/learn">آموزش</a> · <a href="/collections">مجموعه‌ها</a> · <a href="/builder">پرامپت‌ساز</a> · <a href="/guide">راهنمای پرامپت‌نویسی</a> · <a href="/categories">همه دسته‌ها</a> · <a href="/sitemap.xml">نقشه سایت</a></p>
   </div>
 </footer>`;
 
@@ -864,6 +866,16 @@ function sitemapPages() {
     { loc: SITE + '/categories', pri: '0.8', freq: 'weekly' },
     { loc: SITE + '/guide', pri: '0.8', freq: 'monthly' },
     ...allCategories().map((c) => ({ loc: catUrl(c.slug), pri: '0.9', freq: 'daily' })),
+    // authored pages carry the informational queries the catalogue cannot
+    { loc: SITE + '/collections', pri: '0.9', freq: 'weekly' },
+    { loc: SITE + '/learn', pri: '0.9', freq: 'weekly' },
+    { loc: SITE + '/builder', pri: '0.8', freq: 'monthly' },
+    ...require('../content/collections').map((c) => ({
+      loc: `${SITE}/collections/${c.slug}`, pri: '0.8', freq: 'weekly',
+    })),
+    ...require('../content/articles').map((a) => ({
+      loc: `${SITE}/learn/${a.slug}`, pri: '0.8', freq: 'monthly',
+    })),
   ];
   return `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
@@ -899,6 +911,15 @@ ${rows
 module.exports = {
   SITE,
   assetV,
+  // shared with pages.js so the head/header/footer live in one place
+  shell,
+  head,
+  header,
+  footer,
+  orgLd,
+  breadcrumbLd,
+  allCategories,
+
   renderHome,
   renderCategory,
   renderPrompt,

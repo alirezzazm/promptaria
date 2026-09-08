@@ -383,11 +383,117 @@ function wireAssistant() {
   });
 }
 
+
+/* ------------------------------------------------------------------ *
+ * /builder — assembles a prompt from five answers
+ *
+ * Deliberately the same shape as the assistant's generated prompt, so someone
+ * who used پرامپت‌یار first sees a familiar structure here.
+ * ------------------------------------------------------------------ */
+const ROLE_GUESS = [
+  [/اینستاگرام|کپشن|استوری|ریلز|پیج|فالوور/, 'یک سوشال‌مدیا مارکتر با تجربه در رشد پیج‌های فارسی'],
+  [/تبلیغ|فروش|مشتری|بازاریابی|کمپین/, 'یک کپی‌رایتر تبلیغاتی که کارش فروش است نه فقط زیبانویسی'],
+  [/سئو|گوگل|کلمه کلیدی|رتبه/, 'یک متخصص سئو با ده سال تجربه روی سایت‌های فارسی'],
+  [/کد|برنامه|باگ|دیباگ|ریفکتور|تست|سایت|اپلیکیشن/, 'یک مهندس نرم‌افزار ارشد که کد را بازبینی و بهینه می‌کند'],
+  [/رزومه|مصاحبه|شغل|استخدام|لینکدین/, 'یک مشاور شغلی که رزومه‌های موفق نوشته'],
+  [/درس|آموزش|یاد|امتحان|کنکور|دانشجو|دانش‌آموز/, 'یک معلم خصوصی که مفاهیم سخت را ساده توضیح می‌دهد'],
+  [/داده|دیتا|اکسل|تحلیل|آمار|گزارش/, 'یک تحلیلگر داده که از عدد، تصمیم بیرون می‌کشد'],
+  [/عکس|تصویر|طراحی|لوگو|میدجرنی|گرافیک/, 'یک کارگردان هنری که پرامپت‌های تصویری دقیق می‌نویسد'],
+  [/مقاله|متن|بنویس|محتوا|داستان|نویسند/, 'یک نویسنده و ویراستار حرفه‌ای فارسی'],
+  [/قرارداد|حقوق|وکیل|قانون/, 'یک کارشناس حقوقی که زبان قرارداد را ساده می‌کند'],
+  [/برنامه‌ریزی|زمان|تسک|اولویت|بهره‌وری/, 'یک مربی بهره‌وری که برنامه‌های عملی می‌چیند'],
+];
+
+function guessRole(task) {
+  const t = String(task || '');
+  for (const [re, role] of ROLE_GUESS) if (re.test(t)) return role;
+  return 'یک متخصص باتجربه در همین حوزه';
+}
+
+function buildPrompt(v) {
+  const L = [];
+  L.push('تو ' + (v.role || guessRole(v.task)) + ' هستی.');
+  L.push('');
+  L.push('کاری که از تو می‌خواهم: ' + v.task);
+  L.push('');
+  L.push('این نکته‌ها را رعایت کن:');
+  L.push('• مخاطب: ' + (v.audience || '[اینجا بنویس برای چه کسی است]'));
+  L.push('• لحن: ' + (v.tone || '[مثلاً صمیمی، رسمی، تبلیغاتی]'));
+  L.push('• قالب خروجی: ' + (v.format || '[مثلاً فهرست، جدول، متن بلند با تیتر]'));
+  if (v.fa) L.push('• زبان: فارسی روان و بدون ترجمه تحت‌اللفظی');
+  L.push('');
+  if (v.ask) L.push('قبل از شروع، اگر چیزی از صورت مسئله برایت مبهم است حداکثر سه سؤال بپرس.');
+  L.push('اول یک طرح کلی کوتاه بده، بعد وارد جزئیات شو.');
+  if (v.verify) L.push('هر عدد، آمار یا ارجاعی که مطمئن نیستی را صراحتاً «نیازمند راستی‌آزمایی» علامت بزن.');
+  return L.join(String.fromCharCode(10));
+}
+
+function wireBuilder() {
+  const form = $('#bForm');
+  if (!form) return;
+  const out = $('#bOut');
+
+  const collect = () => ({
+    task: $('#bTask').value.trim(),
+    role: $('#bRole').value.trim(),
+    audience: $('#bAudience').value.trim(),
+    tone: $('#bTone').value,
+    format: $('#bFormat').value,
+    ask: $('#bAsk').checked,
+    fa: $('#bFa').checked,
+    verify: $('#bVerify').checked,
+  });
+
+  async function make(e) {
+    if (e) e.preventDefault();
+    const v = collect();
+    if (v.task.length < 5) {
+      $('#bTask').focus();
+      toast('اول بنویس می‌خواهی چه کاری انجام شود');
+      return;
+    }
+    out.textContent = buildPrompt(v);
+
+    // the assistant already knows how to find close matches — reuse it
+    try {
+      const d = await fetch('/api/assist', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ q: v.task }),
+      }).then((r) => r.json());
+      const box = $('#bMatches');
+      box.innerHTML =
+        d.ok && d.matches.length
+          ? `<div class="assist-label">پرامپت‌های آماده‌ی نزدیک به این خواسته</div>
+             <div class="assist-matches">${d.matches
+               .slice(0, 4)
+               .map(
+                 (m) => `<a class="assist-match" href="${esc(m.url)}">
+                   <span class="am-ico" aria-hidden="true">${esc(m.category_icon || '✦')}</span>
+                   <span class="am-body"><b>${esc(m.title)}</b><small>${esc(m.reason)}</small></span></a>`
+               )
+               .join('')}</div>`
+          : '';
+    } catch {
+      /* the built prompt is the point; matches are a bonus */
+    }
+  }
+
+  form.addEventListener('submit', make);
+  $('#bReset').addEventListener('click', () => {
+    form.reset();
+    out.textContent = 'اول فرم را پر کن و «بساز» را بزن.';
+    $('#bMatches').innerHTML = '';
+  });
+  $('#bCopy').addEventListener('click', (e) => copyPrompt(e.currentTarget, out.textContent, null));
+}
+
 /* ------------------------------------------------------------------ */
 document.addEventListener('DOMContentLoaded', () => {
   wireCopy();
   wireCatalog();
   wireAssistant();
+  wireBuilder();
   animateCounters();
   scrollReveal();
   readingProgress();
