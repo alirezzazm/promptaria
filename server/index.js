@@ -608,15 +608,46 @@ app.use((err, req, res, next) => {
  * Auto-update timer
  * ------------------------------------------------------------------ */
 let autoTimer = null;
+let catchUpTimer = null;
+
+/**
+ * setInterval alone is not enough: it restarts from zero on every boot, so a
+ * server that is deployed or rebooted more often than the interval would never
+ * scrape at all. The schedule is therefore anchored to the stored last_scrape
+ * time, and a run that is already overdue at startup fires shortly after boot
+ * rather than waiting a full cycle.
+ */
 function scheduleAuto() {
-  if (autoTimer) clearInterval(autoTimer);
+  clearInterval(autoTimer);
+  clearTimeout(catchUpTimer);
+  autoTimer = null;
+  catchUpTimer = null;
+
   const hours = Number(setting('auto_hours', '12'));
   if (!hours) return console.log('auto-update disabled');
+
+  const periodMs = hours * 3600e3;
   autoTimer = setInterval(() => {
     console.log('[auto] scheduled scrape starting');
     startScrape(null);
-  }, hours * 3600e3);
-  console.log(`auto-update every ${hours}h`);
+  }, periodMs);
+
+  const last = setting('last_scrape', null);
+  const lastMs = last ? Date.parse(String(last).replace(' ', 'T') + 'Z') : NaN;
+  const elapsed = Number.isNaN(lastMs) ? Infinity : Date.now() - lastMs;
+
+  if (elapsed >= periodMs) {
+    // overdue — but give the server a couple of minutes to settle first
+    const delay = 2 * 60e3;
+    const overdueH = Number.isFinite(elapsed) ? Math.round(elapsed / 3600e3) : null;
+    console.log(
+      `auto-update every ${hours}h — last run ${overdueH === null ? 'never' : overdueH + 'h ago'}, catching up in 2min`
+    );
+    catchUpTimer = setTimeout(() => startScrape(null), delay);
+  } else {
+    const dueInH = ((periodMs - elapsed) / 3600e3).toFixed(1);
+    console.log(`auto-update every ${hours}h — next run in ~${dueInH}h`);
+  }
 }
 scheduleAuto();
 
