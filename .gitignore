@@ -5,6 +5,7 @@ logs/
 
 # secrets
 ADMIN_PASSWORD.txt
+.github-token
 .env
 .env.*
 
