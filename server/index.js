@@ -10,6 +10,7 @@ const { ensureCategories } = require('./categories');
 const { runAll, syncSources } = require('../scraper/run');
 const seo = require('./seo');
 const ig = require('./instagram');
+const igAuto = require('./ig-auto');
 const postkit = require('./postkit');
 const assistant = require('./assistant');
 const pages = require('./pages');
@@ -25,7 +26,7 @@ const app = express();
 // Carousel renders arrive as base64 PNGs and blow past a sane global limit, so
 // the two Instagram upload routes get their own, much larger, parser. The global
 // one has to skip those paths or it would reject the body before they run.
-const IG_UPLOAD = /^\/api\/admin\/ig\/(publish|render-only)$/;
+const IG_UPLOAD = /^\/(api\/admin\/ig\/(publish|render-only)|ig\/auto\/[0-9a-f]+)$/;
 const smallJson = express.json({ limit: '1mb' });
 const bigJson = express.json({ limit: '30mb' });
 app.use((req, res, next) => (IG_UPLOAD.test(req.path) ? next() : smallJson(req, res, next)));
@@ -401,6 +402,7 @@ app.get('/api/admin/scrape/status', requireAdmin, (req, res) =>
  * Instagram studio (admin only)
  * ------------------------------------------------------------------ */
 const igJob = { running: false, log: [], result: null, error: null };
+let autoIgRunning = false;
 
 app.get('/api/admin/ig/status', requireAdmin, (req, res) => {
   const cfg = ig.igConfig();
@@ -518,6 +520,114 @@ const PUB = path.join(__dirname, '..', 'public');
 // Carousel renders are meant to be fetched by other origins — Instagram's Graph
 // API pulls them, and the studio hands them to Business Suite in the browser.
 // They are already public URLs, so an open CORS header costs nothing.
+/* --- unattended carousel rendering ---------------------------------
+ * Headless Chrome loads this page, runs the same IGStudio renderer the admin
+ * studio uses, and posts the JPEGs straight back. The one-time job token is
+ * the only credential: it is unguessable, single-use, and useless once the
+ * row leaves `pending`. */
+app.get('/ig/auto/:token', (req, res) => {
+  const job = igAuto.jobByToken(String(req.params.token));
+  if (!job || job.status !== 'pending') return res.status(404).type('text/plain').send('no such job');
+  const payload = JSON.stringify({ token: job.job_token, slides: JSON.parse(job.slides) })
+    .replace(/</g, '\\u003c');
+  res.type('html').set('Cache-Control', 'no-store').send(`<!doctype html>
+<html lang="fa" dir="rtl"><head><meta charset="utf-8">
+<title>render</title>
+<link rel="stylesheet" href="/styles.css">
+<style>body{margin:0;background:#0a0a12}canvas{display:none}</style>
+</head><body>
+<div id="state">rendering</div>
+<script src="/ig-studio.js"></script>
+<script>
+const JOB = ${payload};
+(async () => {
+  const done = (s) => { document.getElementById('state').textContent = s; };
+  try {
+    const canvases = await window.IGStudio.renderAll(JOB.slides);
+    const images = window.IGStudio.toDataUrls(canvases, 'image/jpeg');
+    const r = await fetch('/ig/auto/' + JOB.token, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ images }),
+    });
+    done(r.ok ? 'ok' : 'save-failed');
+  } catch (e) {
+    done('error');
+    fetch('/ig/auto/' + JOB.token + '/fail', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ message: String(e && e.message || e) }),
+    }).catch(() => {});
+  }
+})();
+</script>
+</body></html>`);
+});
+
+app.post('/ig/auto/:token', bigJson, (req, res) => {
+  try {
+    const urls = igAuto.acceptRender(String(req.params.token), (req.body || {}).images);
+    res.json({ ok: true, count: urls.length });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.post('/ig/auto/:token/fail', (req, res) => {
+  igAuto.failRender(String(req.params.token), (req.body || {}).message || 'render failed');
+  res.json({ ok: true });
+});
+
+/* --- admin control over the autopilot --- */
+app.get('/api/admin/ig/auto', requireAdmin, (req, res) => {
+  res.json({ ...igAuto.stats(), chrome: Boolean(igAuto.chromePath()), queue: igAuto.queue(40) });
+});
+
+app.post('/api/admin/ig/auto', requireAdmin, (req, res) => {
+  const b = req.body || {};
+  const set = (k, v) =>
+    db
+      .prepare(
+        `INSERT INTO settings (key, value) VALUES (?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+      )
+      .run(k, String(v));
+  if (b.enabled !== undefined) set('ig_auto', b.enabled ? '1' : '0');
+  if (b.per_day !== undefined) set('ig_auto_per_day', Math.max(1, Math.min(3, Number(b.per_day) || 1)));
+  if (b.slots !== undefined) set('ig_auto_slots', String(b.slots));
+  res.json(igAuto.stats());
+});
+
+app.post('/api/admin/ig/auto/enqueue', requireAdmin, (req, res) => {
+  try {
+    res.json(igAuto.enqueue({ uid: (req.body || {}).uid || null, at: (req.body || {}).at || null }));
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.post('/api/admin/ig/auto/run', requireAdmin, async (req, res) => {
+  if (autoIgRunning) return res.status(409).json({ error: 'یک اجرا در جریان است' });
+  autoIgRunning = true;
+  const lines = [];
+  try {
+    const out = await igAuto.tick((l) => {
+      lines.push(l);
+      console.log('[ig-auto] ' + l);
+    });
+    res.json({ ...out, log: lines });
+  } catch (e) {
+    res.status(500).json({ error: e.message, log: lines });
+  } finally {
+    autoIgRunning = false;
+  }
+});
+
+app.delete('/api/admin/ig/auto/:id', requireAdmin, (req, res) => {
+  db.prepare("UPDATE ig_queue SET status = 'cancelled' WHERE id = ?").run(Number(req.params.id));
+  res.json({ ok: true });
+});
+
 app.use('/ig', (req, res, next) => {
   res.set('Access-Control-Allow-Origin', '*');
   next();
@@ -650,6 +760,25 @@ function scheduleAuto() {
   }
 }
 scheduleAuto();
+
+/* The Instagram autopilot runs on its own clock. It ticks every 20 minutes so
+ * a post goes out close to its slot rather than whenever the maintenance task
+ * happens to fire, and each tick is cheap when there is nothing to do. */
+let igTimer = null;
+async function igTick() {
+  if (autoIgRunning || !igAuto.enabled()) return;
+  autoIgRunning = true;
+  try {
+    await igAuto.tick((l) => console.log('[ig-auto] ' + l));
+  } catch (e) {
+    console.log('[ig-auto] tick failed: ' + e.message);
+  } finally {
+    autoIgRunning = false;
+  }
+}
+clearInterval(igTimer);
+igTimer = setInterval(igTick, 20 * 60e3);
+setTimeout(igTick, 90e3); // once shortly after boot, past the startup rush
 
 // Bind to loopback only: nginx is the sole public entry point, so port 3400
 // must not be reachable from the internet directly.

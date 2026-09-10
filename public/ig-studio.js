@@ -51,6 +51,23 @@
     return lines;
   }
 
+  /**
+   * Like wrap(), but a prompt body is structured text: its line breaks carry
+   * meaning (field lists, numbered rules) and collapsing them turns a readable
+   * prompt into a wall. Wrap each source line on its own.
+   */
+  function wrapBlock(ctx, text, maxWidth) {
+    const out = [];
+    for (const raw of String(text).split('\n')) {
+      if (!raw.trim()) {
+        if (out.length && out[out.length - 1] !== '') out.push('');
+        continue;
+      }
+      for (const l of wrap(ctx, raw.trim(), maxWidth)) out.push(l);
+    }
+    return out;
+  }
+
   function drawBackdrop(ctx, variant) {
     const g = ctx.createLinearGradient(0, 0, W, H);
     g.addColorStop(0, PALETTE.bg0);
@@ -92,7 +109,7 @@
     ctx.textAlign = 'right';
     ctx.font = '600 30px Vazirmatn, Tahoma, sans-serif';
     ctx.fillStyle = PALETTE.muted;
-    ctx.fillText('promptaria.aliizz.ir', W - 70, H - 62);
+    ctx.fillText('promptaria.ir', W - 70, H - 62);
 
     // logo mark
     ctx.textAlign = 'left';
@@ -175,8 +192,10 @@
       const boxTop = y;
       // measure first so the card hugs the text rather than leaving dead space
       ctx.save();
-      ctx.font = '400 27px "JetBrains Mono", Consolas, monospace';
-      const bodyLines = wrap(ctx, slide.body, MAXW - 76);
+      ctx.font = slide.bodyRtl
+        ? '400 29px Vazirmatn, Tahoma, sans-serif'
+        : '400 27px "JetBrains Mono", Consolas, monospace';
+      const bodyLines = wrapBlock(ctx, slide.body, MAXW - 76);
       ctx.restore();
       const maxH = H - y - 190;
       const boxH = Math.max(220, Math.min(maxH, bodyLines.length * 40 + 96));
@@ -191,14 +210,20 @@
       ctx.beginPath();
       roundRect(ctx, 70, boxTop, MAXW, boxH, 26);
       ctx.clip();
-      ctx.direction = 'ltr';
-      ctx.textAlign = 'left';
+      // A Persian body must stay RTL: drawn left-to-right the brackets and
+      // digits mirror and the block becomes unreadable.
+      const rtl = Boolean(slide.bodyRtl);
+      ctx.direction = rtl ? 'rtl' : 'ltr';
+      ctx.textAlign = rtl ? 'right' : 'left';
       ctx.fillStyle = '#dfe3ff';
-      ctx.font = '400 27px "JetBrains Mono", Consolas, monospace';
+      ctx.font = rtl
+        ? '400 29px Vazirmatn, Tahoma, sans-serif'
+        : '400 27px "JetBrains Mono", Consolas, monospace';
+      const tx = rtl ? W - 106 : 106;
       let ty = boxTop + 58;
       for (const line of bodyLines) {
         if (ty > boxTop + boxH - 30) break;
-        ctx.fillText(line, 106, ty);
+        if (line) ctx.fillText(line, tx, ty);
         ty += 40;
       }
       ctx.restore();

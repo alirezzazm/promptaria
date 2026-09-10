@@ -55,9 +55,9 @@ async function main() {
 
   /* --- 1. scrape every enabled source ------------------------------- */
   if (quick) {
-    log('[1/6] scrape skipped (--quick)');
+    log('[1/7] scrape skipped (--quick)');
   } else {
-    log('[1/6] scraping all enabled sources…');
+    log('[1/7] scraping all enabled sources…');
     const { runAll } = require('../scraper/run');
     try {
       const { total } = await runAll({ log: (l) => log('      ' + l) });
@@ -68,7 +68,7 @@ async function main() {
   }
 
   /* --- 2. authored Persian prompts ---------------------------------- */
-  log('[2/6] syncing authored Persian prompts…');
+  log('[2/7] syncing authored Persian prompts…');
   try {
     const out = execFileSync(process.execPath, [path.join(ROOT, 'server', 'seed-fa.js')], {
       cwd: ROOT,
@@ -82,7 +82,7 @@ async function main() {
   /* --- 3. regenerate the Persian documentation ----------------------- */
   // Cheap, and it keeps every prompt's how-to consistent with the current
   // generator after any change to server/lib.js.
-  log('[3/6] regenerating Persian docs…');
+  log('[3/7] regenerating Persian docs…');
   try {
     const out = execFileSync(process.execPath, [path.join(ROOT, 'server', 'reenrich.js')], {
       cwd: ROOT,
@@ -94,7 +94,7 @@ async function main() {
   }
 
   /* --- 4. housekeeping ---------------------------------------------- */
-  log('[4/6] housekeeping…');
+  log('[4/7] housekeeping…');
   try {
     const ig = require('../server/instagram');
     const removed = ig.pruneMedia(72);
@@ -116,15 +116,27 @@ async function main() {
     if (runs) log(`      trimmed ${runs} old scrape-run record(s)`);
   } catch {}
 
-  /* --- 5. push any local commits ------------------------------------- */
-  log('[5/6] pushing local commits…');
+  /* --- 5. Instagram autopilot ---------------------------------------- */
+  // Independent of the app's own 20-minute timer, for the same reason this
+  // whole script exists: the timer only runs while the process is up.
+  log('[5/7] instagram autopilot…');
+  try {
+    const igAuto = require('../server/ig-auto');
+    const out = await igAuto.tick((l) => log('      ' + l));
+    log(`      rendered ${out.rendered}, published ${out.published}`);
+  } catch (e) {
+    log('      autopilot skipped: ' + e.message);
+  }
+
+  /* --- 6. push any local commits ------------------------------------- */
+  log('[6/7] pushing local commits…');
   try {
     require('./autopush').push(log);
   } catch (e) {
     log('      push step skipped: ' + e.message);
   }
 
-  /* --- 6. report ----------------------------------------------------- */
+  /* --- 7. report ----------------------------------------------------- */
   const after = db.prepare("SELECT COUNT(*) n FROM prompts WHERE status='published'").get().n;
   const srcOk = db.prepare("SELECT COUNT(*) n FROM sources WHERE last_status='ok'").get().n;
   const srcAll = db.prepare('SELECT COUNT(*) n FROM sources WHERE enabled=1').get().n;
@@ -132,7 +144,7 @@ async function main() {
     .prepare("SELECT key, last_error FROM sources WHERE enabled=1 AND last_status='error'")
     .all();
 
-  log(`[6/6] prompts ${before} → ${after} (+${after - before}) · sources ok ${srcOk}/${srcAll}`);
+  log(`[7/7] prompts ${before} → ${after} (+${after - before}) · sources ok ${srcOk}/${srcAll}`);
   for (const b of broken) log(`      BROKEN ${b.key}: ${String(b.last_error).slice(0, 120)}`);
 
   log(`=== done in ${Math.round((Date.now() - started) / 1000)}s ===`);

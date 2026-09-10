@@ -75,7 +75,33 @@ const HOOKS = [
   'این را کپی کن و ببین چه فرقی می‌کند ✨',
 ];
 
-const SITE = process.env.SITE_URL || 'https://promptaria.aliizz.ir';
+const SITE = process.env.SITE_URL || 'https://promptaria.ir';
+
+/**
+ * The body slide shows the opening of the prompt, cut on a line boundary.
+ * Clipping mid-sentence looked broken, and collapsing the newlines lost the
+ * field list that makes a prompt legible at a glance.
+ */
+function slideBody(body, maxChars = 560, maxLines = 16) {
+  const out = [];
+  let used = 0;
+  for (const raw of String(body || '').split('\n')) {
+    const line = raw.trimEnd();
+    if (out.length >= maxLines || used + line.length > maxChars) {
+      out.push('…');
+      break;
+    }
+    out.push(line);
+    used += line.length + 1;
+  }
+  return out
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    // Curly braces mirror under the bidi algorithm and read as garbage in
+    // an RTL block; Persian guillemets say the same thing and sit correctly.
+    .replace(/\{\{\s*(.+?)\s*\}\}/g, '«$1»')
+    .trim();
+}
 
 function composePost(p, opts = {}) {
   const parse = (s, f) => {
@@ -123,7 +149,14 @@ function composePost(p, opts = {}) {
   // Carousel storyboard. The client renders each slide to a 1080x1350 canvas.
   const slides = [
     { kind: 'cover', eyebrow: p.cat_name || 'پرامپت', title: p.title, sub: clip(p.summary.replace(/^این پرامپت\s*/, ''), 120), badge: 'Promptaria' },
-    { kind: 'body', eyebrow: 'متن پرامپت', title: 'این را کپی کن', body: clip(p.body, 520), mono: true },
+    {
+      kind: 'body',
+      eyebrow: 'متن پرامپت',
+      title: 'این را کپی کن',
+      body: slideBody(p.body),
+      bodyRtl: p.lang === 'fa',
+      mono: true,
+    },
   ];
   if (vars.length)
     slides.push({
@@ -139,8 +172,8 @@ function composePost(p, opts = {}) {
   slides.push({
     kind: 'cta',
     eyebrow: 'Promptaria',
-    title: '۲۷۰۰+ پرامپت با آموزش فارسی',
-    sub: 'promptaria.aliizz.ir',
+    title: '۳۲۰۰+ پرامپت با آموزش فارسی',
+    sub: 'promptaria.ir',
     badge: 'سیو کن 🔖',
   });
 

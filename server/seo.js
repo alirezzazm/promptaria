@@ -27,7 +27,7 @@ const assetV = (() => {
   }
 })();
 
-const SITE = process.env.SITE_URL || 'https://promptaria.aliizz.ir';
+const SITE = process.env.SITE_URL || 'https://promptaria.ir';
 const NAME = 'Promptaria';
 const NAME_FA = 'پرامپت‌آریا';
 

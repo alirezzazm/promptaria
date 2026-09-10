@@ -105,7 +105,13 @@ function detectDifficulty(body, vars) {
 }
 
 function detectLang(s) {
-  return /[؀-ۿ]/.test(s) ? 'fa' : 'en';
+  // A single Arabic-script character is not enough: plenty of English prompts
+  // quote one Persian or Arabic word as an example, and treating those as
+  // Persian buried the real Persian originals under them.
+  const fa = (String(s).match(/[؀-ۿ]/g) || []).length;
+  if (fa < 12) return 'en';
+  const en = (String(s).match(/[A-Za-z]/g) || []).length;
+  return fa / (fa + en || 1) >= 0.25 ? 'fa' : 'en';
 }
 
 function guessModels(title, body) {

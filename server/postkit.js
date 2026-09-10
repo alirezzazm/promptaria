@@ -14,7 +14,7 @@ const crypto = require('crypto');
 const QRCode = require('qrcode');
 const db = require('./db');
 
-const SITE = process.env.SITE_URL || 'https://promptaria.aliizz.ir';
+const SITE = process.env.SITE_URL || 'https://promptaria.ir';
 const KIT_HOURS = 72;
 
 db.exec(`
