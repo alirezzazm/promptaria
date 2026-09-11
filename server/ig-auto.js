@@ -28,8 +28,6 @@ const postkit = require('./postkit');
 
 const PORT = Number(process.env.PORT || 3400);
 const LOCAL = `http://127.0.0.1:${PORT}`;
-/** Kit rows store a token; the queue stores the full URL. Same prefix as postkit. */
-const SITE_KIT = `${process.env.SITE_URL || 'https://promptaria.ir'}/kit/`;
 
 /* Tehran runs at a fixed +3:30 — the country dropped DST in 2022, so no
  * seasonal arithmetic is needed. */
@@ -374,28 +372,23 @@ async function tick(log = () => {}) {
   }
 
   /* Retire posts that have had their turn, or the queue jams at three and no
-   * new content is ever prepared. Opening a kit on the phone is the only
-   * signal we get that a post was actually used, so treat an opened kit past
-   * its slot as done; drop one nobody opened after two days as stale. */
+   * new content is ever prepared.
+   *
+   * This used to infer "posted" from the kit having been opened, which was
+   * wrong in both directions — opening a kit to look at it counted as posting,
+   * and any crawler or test fetch did too. The kit list has an explicit
+   * "پست شد" button now, so the only inference left is the harmless one:
+   * a post three days past its slot has been overtaken by fresher material. */
   if (!ig.igConfig().connected) {
-    const spent = db
+    const stale = db
       .prepare(
-        `SELECT q.id, q.title, k.opened FROM ig_queue q
-         LEFT JOIN post_kits k ON ('${SITE_KIT}' || k.token) = q.kit_url
-         WHERE q.status = 'ready' AND q.scheduled_at <= datetime('now')`
+        `SELECT id, title FROM ig_queue
+         WHERE status = 'ready' AND scheduled_at <= datetime('now', '-3 days')`
       )
       .all();
-    for (const r of spent) {
-      const slotAge = Date.now() - Date.parse(
-        db.prepare('SELECT scheduled_at FROM ig_queue WHERE id = ?').get(r.id).scheduled_at.replace(' ', 'T') + 'Z'
-      );
-      if (r.opened > 0) {
-        db.prepare("UPDATE ig_queue SET status = 'posted', published_at = datetime('now') WHERE id = ?").run(r.id);
-        log(`«${r.title}» باز شده بود — تمام‌شده علامت خورد`);
-      } else if (slotAge > 48 * 3600e3) {
-        db.prepare("UPDATE ig_queue SET status = 'skipped' WHERE id = ?").run(r.id);
-        log(`«${r.title}» دو روز بی‌استفاده ماند — رد شد`);
-      }
+    for (const r of stale) {
+      db.prepare("UPDATE ig_queue SET status = 'skipped' WHERE id = ?").run(r.id);
+      log(`«${r.title}» سه روز بی‌استفاده ماند — رد شد`);
     }
   }
 

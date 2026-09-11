@@ -699,6 +699,52 @@ app.get('/kit/:token', (req, res) => {
  * With no Graph token the kit is how a post actually reaches Instagram, so
  * there has to be one address that always shows the current ones. Admin-only,
  * noindex, and it prints each kit's QR so the phone never has to type a URL. */
+/** Publish one queued post right now, straight from the kit list. */
+app.post('/api/admin/ig/auto/publish/:id', requireAdmin, async (req, res) => {
+  if (autoIgRunning) return res.status(409).json({ error: 'یک اجرای خودکار در جریان است — چند لحظه بعد دوباره بزن' });
+
+  const row = db.prepare('SELECT * FROM ig_queue WHERE id = ?').get(Number(req.params.id));
+  if (!row) return res.status(404).json({ error: 'این پست در صف نیست' });
+  if (row.status === 'published') return res.status(409).json({ error: 'قبلاً منتشر شده' });
+  if (!row.image_urls) return res.status(409).json({ error: 'هنوز رندر نشده' });
+  if (!ig.igConfig().connected)
+    return res.status(412).json({
+      error: 'توکن Graph API تنظیم نشده — تا وقتی اپ متا ساخته نشود، انتشار از اینجا ممکن نیست',
+      needs: 'ig_token',
+    });
+
+  autoIgRunning = true;
+  const lines = [];
+  try {
+    const r = await ig.publishCarousel({
+      imageUrls: JSON.parse(row.image_urls),
+      caption: row.caption,
+      log: (l) => lines.push(l),
+    });
+    db.prepare(
+      `UPDATE ig_queue SET status = 'published', published_at = datetime('now'), media_id = ?, error = NULL
+       WHERE id = ?`
+    ).run(String((r && (r.id || r.media_id)) || ''), row.id);
+    res.json({ ok: true, media_id: (r && r.id) || null, log: lines });
+  } catch (e) {
+    db.prepare('UPDATE ig_queue SET attempts = attempts + 1, error = ? WHERE id = ?').run(
+      String(e.message).slice(0, 400),
+      row.id
+    );
+    res.status(502).json({ error: e.message, log: lines });
+  } finally {
+    autoIgRunning = false;
+  }
+});
+
+/** Mark a post done by hand, for when it was posted from the phone. */
+app.post('/api/admin/ig/auto/done/:id', requireAdmin, (req, res) => {
+  const done = db
+    .prepare("UPDATE ig_queue SET status = 'posted', published_at = datetime('now') WHERE id = ? AND status = 'ready'")
+    .run(Number(req.params.id)).changes;
+  res.json({ ok: Boolean(done) });
+});
+
 app.get('/admin/kits', requireAdmin, async (req, res) => {
   const rows = db
     .prepare(
@@ -727,6 +773,11 @@ app.get('/admin/kits', requireAdmin, async (req, res) => {
     <h2>${esc(r.title)}</h2>
     <p class="when">زمان پیشنهادی: ${esc(when)}</p>
     <p><a href="${esc(r.kit_url)}" target="_blank" rel="noopener">${esc(r.kit_url)}</a></p>
+    <div class="acts">
+      <button type="button" class="go" data-id="${r.id}">انتشار خودکار</button>
+      <button type="button" class="done" data-done="${r.id}">پست شد</button>
+    </div>
+    <p class="msg" id="msg-${r.id}"></p>
   </div>
 </article>`;
           })
@@ -758,12 +809,58 @@ app.get('/admin/kits', requireAdmin, async (req, res) => {
   .when { color:#9aa0c8; margin:0 0 10px; font-size:14px }
   a { color:#7dd3fc; word-break:break-all; font-size:13px }
   .empty { color:#9aa0c8 }
+  .acts { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px }
+  .acts button { border:none; border-radius:10px; padding:9px 16px; font:inherit; font-size:13.5px;
+                 font-weight:700; color:#fff; cursor:pointer }
+  .acts .go { background:linear-gradient(135deg,#7c5cff,#6247e0) }
+  .acts .done { background:#262845; color:#c3c8e8 }
+  .acts button[disabled] { opacity:.55; cursor:default }
+  .msg { font-size:13px; margin:10px 0 0; min-height:1px }
+  .msg.err { color:#fca5a5 } .msg.ok { color:#86efac }
   footer { color:#6b7194; font-size:13px; margin-top:32px; max-width:760px }
+  footer code { color:#9aa0c8 }
 </style></head><body>
 <h1>کیت‌های آماده‌ی اینستاگرام</h1>
 <p class="lead">با دوربین گوشی QR را بخوان: عکس‌ها و کپشن همان‌جا آماده است.</p>
 ${cards}
-<footer>هر کیت ۷۲ ساعت اعتبار دارد و بعد خودکار از نو ساخته می‌شود. این صفحه برای موتورهای جستجو مسدود است.</footer>
+<footer>
+  «انتشار خودکار» پست را مستقیم از طریق Graph API می‌فرستد و تا وقتی توکن تنظیم نشده باشد
+  با خطا برمی‌گردد. «پست شد» را بعد از انتشار دستی بزن تا صف سراغ محتوای بعدی برود.
+  هر کیت ۷۲ ساعت اعتبار دارد و بعد خودکار از نو ساخته می‌شود. این صفحه برای موتورهای جستجو مسدود است.
+</footer>
+<script>
+document.addEventListener('click', function (ev) {
+  var btn = ev.target.closest('button[data-id], button[data-done]');
+  if (!btn) return;
+  var publish = btn.hasAttribute('data-id');
+  var id = btn.getAttribute(publish ? 'data-id' : 'data-done');
+  var msg = document.getElementById('msg-' + id);
+  var url = '/api/admin/ig/auto/' + (publish ? 'publish/' : 'done/') + id;
+
+  btn.disabled = true;
+  msg.className = 'msg';
+  msg.textContent = publish ? 'در حال انتشار…' : 'ثبت می‌شود…';
+
+  fetch(url, { method: 'POST' })
+    .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+    .then(function (res) {
+      if (res.ok) {
+        msg.className = 'msg ok';
+        msg.textContent = publish ? 'منتشر شد ✔' : 'ثبت شد ✔';
+        btn.closest('article').style.opacity = '.5';
+      } else {
+        msg.className = 'msg err';
+        msg.textContent = res.j.error || 'نشد';
+        btn.disabled = false;
+      }
+    })
+    .catch(function (e) {
+      msg.className = 'msg err';
+      msg.textContent = 'خطای شبکه: ' + e.message;
+      btn.disabled = false;
+    });
+});
+</script>
 </body></html>`);
 });
 

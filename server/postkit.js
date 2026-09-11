@@ -108,6 +108,14 @@ function renderKit(kit) {
   <h1>${esc(kit.title)}</h1>
   <p class="sub">کیت پست اینستاگرام · ${images.length} اسلاید</p>
 
+  <button class="big-btn" id="shareAll" type="button" hidden style="margin:0 0 6px">
+    ارسال همه به اینستاگرام
+  </button>
+  <p class="hint" id="shareHint" hidden>
+    این دکمه هر ${images.length} تصویر را به برگه‌ی اشتراک‌گذاری گوشی می‌دهد. اینکه اینستاگرام
+    آن‌ها را به‌صورت کاروسل بپذیرد به نسخه‌ی اپ بستگی دارد؛ اگر نپذیرفت از راه پایین برو.
+  </p>
+
   <div class="step"><i>۱</i> تصاویر را ذخیره کن</div>
   <p class="hint">روی هر تصویر نگه دار و «ذخیره در تصاویر» را بزن — یا دکمه ذخیره گوشه هر کدام. ترتیب مهم است.</p>
   <div class="shots">
@@ -167,6 +175,44 @@ function renderKit(kit) {
   }
   wire('copyCap', 'cap', 'کپی کپشن');
   wire('copyTags', 'tags', 'کپی هشتگ‌ها');
+
+  /* Share sheet path. Only offered where the browser can actually share files —
+   * on a desktop it would appear and then fail, so it stays hidden unless
+   * canShare() says yes for a real File. The slides are same-origin, so
+   * fetching them back as blobs is allowed. */
+  (function () {
+    var urls = ${JSON.stringify(images)};
+    var btn = document.getElementById('shareAll');
+    var hint = document.getElementById('shareHint');
+    if (!btn || !navigator.canShare || !navigator.share) return;
+    try {
+      var probe = new File([new Blob([1])], 'p.jpg', { type: 'image/jpeg' });
+      if (!navigator.canShare({ files: [probe] })) return;
+    } catch (e) { return; }
+
+    btn.hidden = false; hint.hidden = false;
+    btn.addEventListener('click', function () {
+      var label = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = 'آماده‌سازی تصاویر…';
+      Promise.all(
+        urls.map(function (u, i) {
+          return fetch(u)
+            .then(function (r) { return r.blob(); })
+            .then(function (b) { return new File([b], 'slide-' + (i + 1) + '.jpg', { type: 'image/jpeg' }); });
+        })
+      )
+        .then(function (files) {
+          return navigator.share({ files: files, text: document.getElementById('cap').textContent });
+        })
+        .then(function () { btn.textContent = 'فرستاده شد ✓'; btn.classList.add('done'); })
+        .catch(function (e) {
+          // AbortError just means the user closed the sheet — not a failure.
+          btn.textContent = e && e.name === 'AbortError' ? label : 'نشد — از راه پایین برو';
+          btn.disabled = false;
+        });
+    });
+  })();
 </script>
 </body>
 </html>`;
