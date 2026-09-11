@@ -36,8 +36,12 @@ function push(log = console.log) {
   let ahead = '';
   try {
     ahead = git(['log', '--oneline', 'origin/main..HEAD']);
-  } catch {
-    log('      cannot compare with origin — skipping push');
+  } catch (e) {
+    // Worth printing: under the SYSTEM account this failed for a whole
+    // different reason than a missing remote (git refused the repo as
+    // dubious ownership), and the old message sent us looking in the wrong place.
+    const why = String(e.stderr || e.message || '').split('\n')[0].slice(0, 160);
+    log(`      cannot compare with origin — skipping push (${why})`);
     return { pushed: 0, reason: 'no-origin' };
   }
 
