@@ -24,9 +24,12 @@ const crypto = require('crypto');
 const { spawn } = require('child_process');
 const db = require('./db');
 const ig = require('./instagram');
+const postkit = require('./postkit');
 
 const PORT = Number(process.env.PORT || 3400);
 const LOCAL = `http://127.0.0.1:${PORT}`;
+/** Kit rows store a token; the queue stores the full URL. Same prefix as postkit. */
+const SITE_KIT = `${process.env.SITE_URL || 'https://promptaria.ir'}/kit/`;
 
 /* Tehran runs at a fixed +3:30 — the country dropped DST in 2022, so no
  * seasonal arithmetic is needed. */
@@ -56,6 +59,17 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS ig_queue_due ON ig_queue(status, scheduled_at);
   CREATE INDEX IF NOT EXISTS ig_queue_uid ON ig_queue(prompt_uid);
 `);
+
+/* Added once the manual path became the primary one: a post kit is the phone
+ * page that carries the slides and caption, so a rendered post is useful even
+ * with no Graph token. Older databases predate these columns. */
+for (const col of ['kit_url TEXT', 'kit_expires TEXT']) {
+  try {
+    db.exec(`ALTER TABLE ig_queue ADD COLUMN ${col}`);
+  } catch {
+    /* already there */
+  }
+}
 
 const setting = (k, d = null) => {
   const r = db.prepare('SELECT value FROM settings WHERE key = ?').get(k);
@@ -296,6 +310,36 @@ function jobByToken(token) {
   return db.prepare('SELECT * FROM ig_queue WHERE job_token = ?').get(token);
 }
 
+/**
+ * Builds the phone page for a rendered post and remembers its address.
+ *
+ * Without a Graph token the carousel still has to reach Instagram somehow, and
+ * the kit is that route: open it on the phone, save six images, copy the
+ * caption. It outlives neither its own 72h expiry nor the media prune, so the
+ * tick re-makes it when either lapses.
+ */
+function makeKit(row, log = () => {}) {
+  const p = db
+    .prepare(
+      `SELECT p.*, c.slug AS cat_slug FROM prompts p
+       LEFT JOIN categories c ON c.id = p.category_id WHERE p.uid = ?`
+    )
+    .get(row.prompt_uid);
+  const kit = postkit.createKit({
+    uid: row.prompt_uid,
+    title: row.title,
+    caption: row.caption,
+    hashtags: ig.hashtags((p && p.cat_slug) || 'general', 30).join(' '),
+    images: JSON.parse(row.image_urls),
+  });
+  db.prepare(
+    `UPDATE ig_queue SET kit_url = ?, kit_expires = datetime('now', '+${postkit.KIT_HOURS} hours')
+     WHERE id = ?`
+  ).run(kit.url, row.id);
+  log(`کیت ساخته شد: ${kit.url}`);
+  return kit.url;
+}
+
 /* ------------------------------------------------------------------ *
  * Publishing
  * ------------------------------------------------------------------ */
@@ -309,26 +353,82 @@ async function tick(log = () => {}) {
     return { rendered: 0, published: 0 };
   }
 
+  /* A kit and its images both die at 72h. If either lapsed before the post was
+   * actually used, send the row back for a fresh render rather than leaving a
+   * dead link in the queue. */
+  for (const r of db.prepare("SELECT * FROM ig_queue WHERE status = 'ready'").all()) {
+    const gone =
+      !r.image_urls ||
+      JSON.parse(r.image_urls).some(
+        (u) => !fs.existsSync(path.join(__dirname, '..', 'public', 'ig', u.split('/').pop()))
+      );
+    const kitDead =
+      r.kit_url && r.kit_expires && Date.parse(r.kit_expires.replace(' ', 'T') + 'Z') < Date.now();
+    if (gone || kitDead) {
+      log(`«${r.title}» کهنه شد — دوباره ساخته می‌شود`);
+      db.prepare(
+        `UPDATE ig_queue SET status = 'pending', image_urls = NULL, kit_url = NULL,
+         kit_expires = NULL, attempts = 0, job_token = ? WHERE id = ?`
+      ).run(crypto.randomBytes(16).toString('hex'), r.id);
+    }
+  }
+
+  /* Retire posts that have had their turn, or the queue jams at three and no
+   * new content is ever prepared. Opening a kit on the phone is the only
+   * signal we get that a post was actually used, so treat an opened kit past
+   * its slot as done; drop one nobody opened after two days as stale. */
+  if (!ig.igConfig().connected) {
+    const spent = db
+      .prepare(
+        `SELECT q.id, q.title, k.opened FROM ig_queue q
+         LEFT JOIN post_kits k ON ('${SITE_KIT}' || k.token) = q.kit_url
+         WHERE q.status = 'ready' AND q.scheduled_at <= datetime('now')`
+      )
+      .all();
+    for (const r of spent) {
+      const slotAge = Date.now() - Date.parse(
+        db.prepare('SELECT scheduled_at FROM ig_queue WHERE id = ?').get(r.id).scheduled_at.replace(' ', 'T') + 'Z'
+      );
+      if (r.opened > 0) {
+        db.prepare("UPDATE ig_queue SET status = 'posted', published_at = datetime('now') WHERE id = ?").run(r.id);
+        log(`«${r.title}» باز شده بود — تمام‌شده علامت خورد`);
+      } else if (slotAge > 48 * 3600e3) {
+        db.prepare("UPDATE ig_queue SET status = 'skipped' WHERE id = ?").run(r.id);
+        log(`«${r.title}» دو روز بی‌استفاده ماند — رد شد`);
+      }
+    }
+  }
+
   topUp(3, log);
 
-  const out = { rendered: 0, published: 0 };
+  const out = { rendered: 0, published: 0, kits: 0 };
 
   /* Render anything due within the next few hours, so the image is already
    * hosted when the publish moment arrives. */
+  /* With a token, rendering just before the slot keeps the media fresh. Without
+   * one the kit is the product, so render the next two days up front and have
+   * the links waiting. Both windows stay inside the 72h media prune. */
+  const connected = ig.igConfig().connected;
+  const horizon = connected ? '+6 hours' : '+48 hours';
   const toRender = db
     .prepare(
       `SELECT * FROM ig_queue
        WHERE status = 'pending' AND attempts < 3
-         AND scheduled_at <= datetime('now', '+6 hours')
-       ORDER BY scheduled_at LIMIT 2`
+         AND scheduled_at <= datetime('now', ?)
+       ORDER BY scheduled_at LIMIT 3`
     )
-    .all();
+    .all(horizon);
   for (const row of toRender) {
     db.prepare('UPDATE ig_queue SET attempts = attempts + 1 WHERE id = ?').run(row.id);
     try {
       log(`رندر «${row.title}»…`);
       await renderJob(row, log);
       out.rendered++;
+      if (!connected) {
+        const fresh = db.prepare('SELECT * FROM ig_queue WHERE id = ?').get(row.id);
+        makeKit(fresh, log);
+        out.kits = (out.kits || 0) + 1;
+      }
     } catch (e) {
       log('رندر شکست خورد: ' + e.message);
       db.prepare('UPDATE ig_queue SET error = ? WHERE id = ?').run(String(e.message).slice(0, 400), row.id);
@@ -400,7 +500,7 @@ function queue(limit = 30) {
   return db
     .prepare(
       `SELECT id, prompt_uid, title, status, scheduled_at, published_at, attempts, error,
-              length(caption) caption_length
+              kit_url, kit_expires, length(caption) caption_length
        FROM ig_queue ORDER BY
          CASE status WHEN 'ready' THEN 0 WHEN 'pending' THEN 1 ELSE 2 END,
          scheduled_at LIMIT ?`
@@ -427,6 +527,7 @@ function stats() {
 
 module.exports = {
   enqueue,
+  makeKit,
   topUp,
   tick,
   renderJob,

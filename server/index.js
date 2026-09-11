@@ -695,6 +695,78 @@ app.get('/kit/:token', (req, res) => {
     .send(kit ? postkit.renderKit(kit) : postkit.renderExpired());
 });
 
+/* --- the standing list of ready post kits ---------------------------
+ * With no Graph token the kit is how a post actually reaches Instagram, so
+ * there has to be one address that always shows the current ones. Admin-only,
+ * noindex, and it prints each kit's QR so the phone never has to type a URL. */
+app.get('/admin/kits', requireAdmin, async (req, res) => {
+  const rows = db
+    .prepare(
+      `SELECT id, title, status, scheduled_at, kit_url, kit_expires
+       FROM ig_queue
+       WHERE kit_url IS NOT NULL AND status IN ('ready', 'pending')
+       ORDER BY scheduled_at`
+    )
+    .all();
+
+  const esc = (s) =>
+    String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+
+  const cards = rows.length
+    ? (
+        await Promise.all(
+          rows.map(async (r) => {
+          const when = new Date(r.scheduled_at.replace(' ', 'T') + 'Z').toLocaleString('fa-IR', {
+            timeZone: 'Asia/Tehran',
+            dateStyle: 'full',
+            timeStyle: 'short',
+          });
+          return `<article class="kit">
+  <div class="qr">${await postkit.qrSvg(r.kit_url, { onWhite: true })}</div>
+  <div class="meta">
+    <h2>${esc(r.title)}</h2>
+    <p class="when">زمان پیشنهادی: ${esc(when)}</p>
+    <p><a href="${esc(r.kit_url)}" target="_blank" rel="noopener">${esc(r.kit_url)}</a></p>
+  </div>
+</article>`;
+          })
+        )
+      ).join('\n')
+    : '<p class="empty">هنوز کیتی آماده نیست. تا چند دقیقه دیگر خودکار ساخته می‌شود.</p>';
+
+  res
+    .type('html')
+    .set('Cache-Control', 'no-store')
+    .send(`<!doctype html>
+<html lang="fa" dir="rtl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow,noarchive">
+<title>کیت‌های آماده</title>
+<style>
+  :root { color-scheme: dark }
+  body { margin:0; background:#0a0a12; color:#eceefb;
+         font:16px/1.7 Vazirmatn, Tahoma, sans-serif; padding:28px 18px 60px }
+  h1 { font-size:24px; margin:0 0 6px }
+  .lead { color:#9aa0c8; margin:0 0 28px }
+  .kit { display:flex; gap:20px; align-items:center; flex-wrap:wrap;
+         background:#141527; border:1px solid #262845; border-radius:18px;
+         padding:18px; margin:0 0 16px; max-width:760px }
+  .qr { background:#fff; padding:8px; border-radius:12px; line-height:0 }
+  .qr svg { width:132px; height:132px; display:block }
+  .meta { flex:1 1 280px; min-width:0 }
+  h2 { font-size:19px; margin:0 0 6px }
+  .when { color:#9aa0c8; margin:0 0 10px; font-size:14px }
+  a { color:#7dd3fc; word-break:break-all; font-size:13px }
+  .empty { color:#9aa0c8 }
+  footer { color:#6b7194; font-size:13px; margin-top:32px; max-width:760px }
+</style></head><body>
+<h1>کیت‌های آماده‌ی اینستاگرام</h1>
+<p class="lead">با دوربین گوشی QR را بخوان: عکس‌ها و کپشن همان‌جا آماده است.</p>
+${cards}
+<footer>هر کیت ۷۲ ساعت اعتبار دارد و بعد خودکار از نو ساخته می‌شود. این صفحه برای موتورهای جستجو مسدود است.</footer>
+</body></html>`);
+});
+
 app.get('/admin', (req, res) => {
   let page = fs.readFileSync(path.join(PUB, 'admin.html'), 'utf8');
   page = page.replace(/(href|src)="\/(styles\.css|admin\.js|admin-ig\.js|ig-studio\.js)"/g,

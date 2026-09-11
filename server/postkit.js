@@ -47,8 +47,18 @@ function createKit({ uid, title, caption, hashtags, images }) {
 const getKit = (token) =>
   db.prepare("SELECT * FROM post_kits WHERE token = ? AND expires_at > datetime('now')").get(String(token || ''));
 
-const qrSvg = (text) =>
-  QRCode.toString(text, { type: 'svg', margin: 1, width: 220, color: { dark: '#eceefb', light: '#00000000' } });
+/**
+ * Defaults to pale-on-transparent for the dark kit page. Pass `{ onWhite: true }`
+ * where the code sits on a white card — phone scanners are far more reliable
+ * with the conventional dark-on-light contrast.
+ */
+const qrSvg = (text, { onWhite = false } = {}) =>
+  QRCode.toString(text, {
+    type: 'svg',
+    margin: 1,
+    width: 220,
+    color: onWhite ? { dark: '#0a0a12', light: '#ffffff' } : { dark: '#eceefb', light: '#00000000' },
+  });
 
 /* ------------------------------------------------------------------ *
  * The mobile page
