@@ -4,6 +4,7 @@ const cookieParser = require('cookie-parser');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const { execFile } = require('child_process');
 
 const db = require('./db');
 const { ensureCategories } = require('./categories');
@@ -11,6 +12,7 @@ const { runAll, syncSources } = require('../scraper/run');
 const seo = require('./seo');
 const ig = require('./instagram');
 const igAuto = require('./ig-auto');
+const igBrowser = require('./ig-browser');
 const postkit = require('./postkit');
 const assistant = require('./assistant');
 const pages = require('./pages');
@@ -743,6 +745,76 @@ app.post('/api/admin/ig/auto/done/:id', requireAdmin, (req, res) => {
     .prepare("UPDATE ig_queue SET status = 'posted', published_at = datetime('now') WHERE id = ? AND status = 'ready'")
     .run(Number(req.params.id)).changes;
   res.json({ ok: Boolean(done) });
+});
+
+/* --- posting through a real Chrome ----------------------------------
+ * The fallback for having no Graph token. See server/ig-browser.js for what
+ * this costs; the short version is that it automates instagram.com, which
+ * Instagram's terms forbid, and the account carries that risk. */
+app.get('/api/admin/ig/browser/state', requireAdmin, async (req, res) => {
+  try {
+    const st = await igBrowser.loginState();
+    res.json({ ...st, profile: igBrowser.PROFILE_DIR });
+  } catch (e) {
+    res.status(500).json({ error: e.message, profile: igBrowser.PROFILE_DIR });
+  }
+});
+
+app.post('/api/admin/ig/browser/login', requireAdmin, (req, res) => {
+  try {
+    const info = igBrowser.requestLoginWindow();
+    execFile(
+      'schtasks',
+      ['/run', '/tn', 'promptaria-ig-login'],
+      { windowsHide: true },
+      (err, stdout, stderr) => {
+        if (err) console.log('[ig-browser] login task failed:', String(stderr || err.message).slice(0, 200));
+      }
+    );
+    res.json({
+      ok: true,
+      ...info,
+      note: 'یک پنجره‌ی کروم روی دسکتاپ سرور باز می‌شود. وارد شو، بعد ببندش و «بررسی وضعیت» را بزن.',
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/admin/ig/browser/publish/:id', requireAdmin, async (req, res) => {
+  if (autoIgRunning) return res.status(409).json({ error: 'یک اجرای دیگر در جریان است' });
+
+  const row = db.prepare('SELECT * FROM ig_queue WHERE id = ?').get(Number(req.params.id));
+  if (!row) return res.status(404).json({ error: 'این پست در صف نیست' });
+  if (row.status === 'published') return res.status(409).json({ error: 'قبلاً منتشر شده' });
+  if (!row.image_urls) return res.status(409).json({ error: 'هنوز رندر نشده' });
+
+  autoIgRunning = true;
+  const lines = [];
+  const log = (l) => {
+    lines.push(l);
+    console.log('[ig-browser] ' + l);
+  };
+  try {
+    await igBrowser.publish(
+      { imagePaths: igBrowser.pathsFor(row.image_urls), caption: row.caption },
+      log
+    );
+    db.prepare(
+      `UPDATE ig_queue SET status = 'published', published_at = datetime('now'), media_id = 'browser', error = NULL
+       WHERE id = ?`
+    ).run(row.id);
+    putSetting('ig_last_post', new Date().toISOString());
+    res.json({ ok: true, log: lines });
+  } catch (e) {
+    db.prepare('UPDATE ig_queue SET attempts = attempts + 1, error = ? WHERE id = ?').run(
+      String(e.message).slice(0, 400),
+      row.id
+    );
+    res.status(502).json({ error: e.message, log: lines });
+  } finally {
+    autoIgRunning = false;
+  }
 });
 
 app.get('/admin/kits', requireAdmin, async (req, res) => {

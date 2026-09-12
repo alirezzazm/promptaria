@@ -311,7 +311,8 @@ function autoPanelHtml(a) {
             }</td>
             <td style="white-space:nowrap">${
               live
-                ? `<button class="btn small" data-pub="${r.id}">انتشار</button>
+                ? `<button class="btn small" data-pub="${r.id}">انتشار API</button>
+                   <button class="btn small" data-brpub="${r.id}">انتشار با مرورگر</button>
                    <button class="btn small" data-done="${r.id}">پست شد</button>
                    <button class="btn small" data-drop="${r.id}">حذف</button>`
                 : ''
@@ -373,6 +374,22 @@ function autoPanelHtml(a) {
         <div class="logbox" id="igAutoLog" style="margin-top:14px;display:${
           igState.autoLog ? 'block' : 'none'
         }">${esc(igState.autoLog)}</div>
+
+        <div style="margin-top:22px;padding-top:18px;border-top:1px solid var(--border)">
+          <div class="row" style="justify-content:space-between;margin-bottom:8px">
+            <b style="font-size:13.5px">انتشار از طریق مرورگر</b>
+            <span id="igBrState" style="font-size:12.5px;color:var(--dim)">وضعیت نامشخص</span>
+          </div>
+          <p style="margin:0 0 12px;color:var(--muted);font-size:12.5px;line-height:2">
+            وقتی توکن API نداری، سرور یک کروم واقعی باز می‌کند و پست را مثل یک آدم می‌گذارد.
+            <b style="color:var(--gold)">این خلاف شرایط استفاده‌ی اینستاگرام است و ریسکش محدود شدن حساب است.</b>
+            رمزت هیچ‌جا ذخیره نمی‌شود — یک بار در پنجره‌ای که باز می‌شود خودت وارد می‌شوی.
+          </p>
+          <div class="row">
+            <button class="btn" id="igBrCheck">بررسی وضعیت ورود</button>
+            <button class="btn" id="igBrLogin">باز کردن پنجره‌ی ورود</button>
+          </div>
+        </div>
       </div>
     </div>`;
 }
@@ -411,20 +428,57 @@ function wireAutoPanel() {
     loadInsta();
   };
 
+  /* Browser-route controls. The state check drives a real Chrome, so it is
+   * slow enough to need its own "working…" text. */
+  const brState = $('#igBrState');
+  $('#igBrCheck').onclick = async () => {
+    brState.style.color = 'var(--dim)';
+    brState.textContent = 'در حال بررسی — کروم باز می‌شود…';
+    const r = await api('/api/admin/ig/browser/state');
+    if (r.error) {
+      brState.style.color = '#fda4af';
+      brState.textContent = r.error;
+    } else if (r.challenge) {
+      brState.style.color = '#fda4af';
+      brState.textContent = 'اینستاگرام تأیید هویت می‌خواهد — پنجره را باز کن و رفعش کن';
+    } else {
+      brState.style.color = r.loggedIn ? 'var(--green)' : 'var(--gold)';
+      brState.textContent = r.loggedIn ? '● لاگین است' : '● لاگین نیست';
+    }
+  };
+  $('#igBrLogin').onclick = async () => {
+    brState.style.color = 'var(--dim)';
+    brState.textContent = 'در حال باز کردن پنجره…';
+    const r = await api('/api/admin/ig/browser/login', { method: 'POST' });
+    if (r.error) {
+      brState.style.color = '#fda4af';
+      brState.textContent = r.error;
+      return;
+    }
+    brState.style.color = 'var(--muted)';
+    brState.textContent = r.note;
+    toast('پنجره روی دسکتاپ سرور باز شد');
+  };
+
   // One handler for every row button; the table is rebuilt on each load.
-  document.querySelectorAll('#tab-insta [data-pub],[data-done],[data-drop]').forEach((btn) => {
+  document.querySelectorAll('#tab-insta [data-pub],[data-brpub],[data-done],[data-drop]').forEach((btn) => {
     btn.onclick = async () => {
       const pub = btn.getAttribute('data-pub');
+      const brpub = btn.getAttribute('data-brpub');
       const done = btn.getAttribute('data-done');
       const drop = btn.getAttribute('data-drop');
       btn.disabled = true;
-      say(pub ? 'در حال انتشار…' : 'ثبت می‌شود…');
+      say(pub || brpub ? 'در حال انتشار…' : 'ثبت می‌شود…');
 
       const r = pub
         ? await api('/api/admin/ig/auto/publish/' + pub, { method: 'POST' })
-        : done
-          ? await api('/api/admin/ig/auto/done/' + done, { method: 'POST' })
-          : await api('/api/admin/ig/auto/' + drop, { method: 'DELETE' });
+        : brpub
+          ? await api('/api/admin/ig/browser/publish/' + brpub, { method: 'POST' })
+          : done
+            ? await api('/api/admin/ig/auto/done/' + done, { method: 'POST' })
+            : await api('/api/admin/ig/auto/' + drop, { method: 'DELETE' });
+
+      if (r.log) igState.autoLog = r.log.join('\n');
 
       if (r.error) {
         // The status line sits above the table; with several rows on screen a
@@ -434,7 +488,7 @@ function wireAutoPanel() {
         btn.disabled = false;
         return;
       }
-      toast(pub ? 'منتشر شد' : done ? 'ثبت شد' : 'حذف شد');
+      toast(pub || brpub ? 'منتشر شد' : done ? 'ثبت شد' : 'حذف شد');
       loadInsta();
     };
   });
