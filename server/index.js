@@ -760,9 +760,9 @@ app.get('/api/admin/ig/browser/state', requireAdmin, async (req, res) => {
   }
 });
 
-app.post('/api/admin/ig/browser/login', requireAdmin, (req, res) => {
+app.post('/api/admin/ig/browser/login', requireAdmin, async (req, res) => {
   try {
-    const info = igBrowser.requestLoginWindow();
+    const info = await igBrowser.requestLoginWindow();
     execFile(
       'schtasks',
       ['/run', '/tn', 'promptaria-ig-login'],

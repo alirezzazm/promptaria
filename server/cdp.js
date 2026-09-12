@@ -47,7 +47,12 @@ async function probe(port) {
  */
 async function launch({ port, profileDir, headless = true, exe = null, url = 'about:blank' }) {
   const existing = await probe(port);
-  if (existing) return { port, reused: true, browser: existing.Browser, child: null };
+  if (existing) {
+    // A visible window the user opened to sign in is reused as-is; its session
+    // is exactly what we want. The UA is the only place CDP admits headlessness.
+    const isHeadless = /HeadlessChrome/.test(existing['User-Agent'] || '');
+    return { port, reused: true, headless: isHeadless, browser: existing.Browser, child: null };
+  }
 
   const bin = chromePath(exe);
   if (!bin) throw new Error('کروم پیدا نشد');
@@ -74,12 +79,53 @@ async function launch({ port, profileDir, headless = true, exe = null, url = 'ab
   for (let i = 0; i < 50; i++) {
     await wait(400);
     const v = await probe(port);
-    if (v) return { port, reused: false, browser: v.Browser, child };
+    if (v) return { port, reused: false, headless, browser: v.Browser, child };
   }
   try {
     child.kill();
   } catch {}
   throw new Error('کروم بالا آمد ولی پورت دیباگ جواب نداد');
+}
+
+/**
+ * Kills every Chrome process using `profileDir`.
+ *
+ * Chrome allows one process per profile. Launch a second one on the same
+ * directory — say, a visible sign-in window while a headless instance still
+ * holds the profile — and it does not open a window at all: it hands the URL
+ * to the running instance and exits. With a headless instance that means the
+ * user clicks and nothing ever appears.
+ */
+function stopProfile(profileDir) {
+  return new Promise((resolve) => {
+    const needle = profileDir.replace(/'/g, "''");
+    const ps =
+      `Get-CimInstance Win32_Process -Filter "Name='chrome.exe'" | ` +
+      `Where-Object { $_.CommandLine -like '*${needle}*' } | ` +
+      `ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`;
+    const child = spawn('powershell.exe', ['-NoProfile', '-Command', ps], { stdio: 'ignore', windowsHide: true });
+    child.on('exit', () => setTimeout(resolve, 1200));
+    child.on('error', () => resolve());
+  });
+}
+
+/** Asks the browser to exit cleanly, so it releases the profile lock. */
+async function closeBrowser(port) {
+  try {
+    const v = await probe(port);
+    if (!v || !v.webSocketDebuggerUrl) return;
+    const ws = new WebSocket(v.webSocketDebuggerUrl);
+    await new Promise((res) => {
+      ws.onopen = () => {
+        ws.send(JSON.stringify({ id: 1, method: 'Browser.close' }));
+        setTimeout(res, 800);
+      };
+      ws.onerror = () => res();
+    });
+    try {
+      ws.close();
+    } catch {}
+  } catch {}
 }
 
 /** Picks a page target, creating one if the browser has none. */
@@ -219,4 +265,4 @@ async function attach(port) {
   return s;
 }
 
-module.exports = { launch, attach, probe, firstPage, chromePath, wait, Session };
+module.exports = { launch, attach, probe, firstPage, chromePath, wait, stopProfile, closeBrowser, Session };

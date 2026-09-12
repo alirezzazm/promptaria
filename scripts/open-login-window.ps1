@@ -34,6 +34,17 @@ if (-not (Test-Path $chrome)) { throw 'کروم روی این سیستم نصب 
 
 New-Item -ItemType Directory -Force -Path $profileDir | Out-Null
 
+# کروم برای هر پروفایل فقط یک پروسه اجازه می‌دهد. اگر یک کروم بی‌سر هنوز
+# این پروفایل را نگه داشته باشد، پنجره‌ی تازه اصلاً باز نمی‌شود و آدرس را
+# به همان پروسه‌ی نامرئی می‌دهد — کاربر کلیک می‌کند و چیزی نمی‌بیند.
+# پس اول هر کرومی که روی این پروفایل است بسته می‌شود.
+$stale = Get-CimInstance Win32_Process -Filter "Name='chrome.exe'" |
+    Where-Object { $_.CommandLine -like "*$profileDir*" }
+if ($stale) {
+    $stale | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+    Start-Sleep -Seconds 2
+}
+
 # همان پورت دیباگ که اپ به آن وصل می‌شود، تا نشستِ همین پنجره بعداً قابل
 # استفاده باشد و کاربر مجبور نباشد دو بار وارد شود.
 Start-Process -FilePath $chrome -ArgumentList @(

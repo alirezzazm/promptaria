@@ -47,7 +47,7 @@ const wait = cdp.wait;
  * login form's presence is the negative case.
  */
 async function loginState(log = () => {}) {
-  await cdp.launch({ port: port(), profileDir: PROFILE_DIR, headless: true });
+  const run = await cdp.launch({ port: port(), profileDir: PROFILE_DIR, headless: true });
   const s = await cdp.attach(port());
   try {
     await s.navigate('https://www.instagram.com/');
@@ -71,7 +71,19 @@ async function loginState(log = () => {}) {
     };
   } finally {
     s.close();
+    await release(run);
   }
+}
+
+/**
+ * Lets go of the profile once a headless run is over.
+ *
+ * Leaving headless Chrome running looked like a cheap speed-up and was the bug:
+ * it held the profile, so the sign-in window could never open. A visible window
+ * is left alone — that one belongs to the user.
+ */
+async function release(run) {
+  if (run && run.headless) await cdp.closeBrowser(port());
 }
 
 /**
@@ -82,7 +94,11 @@ async function loginState(log = () => {}) {
  * interactive session — the same problem, and the same fix, as the scrap
  * panel's sign-in button.
  */
-function requestLoginWindow() {
+async function requestLoginWindow() {
+  // Free the profile first, or the window hands its URL to an invisible
+  // headless instance and never appears. The .ps1 does this too; doing it
+  // here as well means a slow task start cannot race a fresh headless launch.
+  await cdp.stopProfile(PROFILE_DIR);
   fs.mkdirSync(path.dirname(LOGIN_REQUEST), { recursive: true });
   fs.writeFileSync(
     LOGIN_REQUEST,
@@ -123,7 +139,7 @@ const SHARE = ['Share', 'اشتراک‌گذاری', 'اشتراک گذاری', 
 async function publish({ imagePaths, caption }, log = () => {}) {
   for (const p of imagePaths) if (!fs.existsSync(p)) throw new Error('فایل تصویر نیست: ' + path.basename(p));
 
-  await cdp.launch({ port: port(), profileDir: PROFILE_DIR, headless: true });
+  const run = await cdp.launch({ port: port(), profileDir: PROFILE_DIR, headless: true });
   const s = await cdp.attach(port());
 
   try {
@@ -200,6 +216,7 @@ async function publish({ imagePaths, caption }, log = () => {}) {
     return { ok: true, confirmation: String(ok).slice(0, 80) };
   } finally {
     s.close();
+    await release(run);
   }
 }
 
