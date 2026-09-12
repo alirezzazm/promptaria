@@ -15,7 +15,9 @@ async function loadInsta() {
     <div class="panel">
       <h3>استودیو اینستاگرام
         <span class="sp">
-          <span class="conn ${status.connected ? 'on' : 'off'}">${status.connected ? '● حساب وصل است' : '● حساب وصل نیست'}</span>
+          <span class="conn ${status.connected ? 'on' : 'off'}">${
+            status.connected ? '● توکن API ذخیره است' : '● توکن API ندارد'
+          }</span>
         </span>
       </h3>
       <div class="inner">
@@ -26,6 +28,15 @@ async function loadInsta() {
           <button class="btn primary" id="igMake">ساخت پست</button>
           <button class="btn" id="igRandom">یک پرامپت تصادفی</button>
         </div>
+        ${
+          status.connected
+            ? ''
+            : `<p style="margin:0 0 14px;color:var(--muted);font-size:12.5px;line-height:2">
+                این نشانه ربطی به لاگین بودنت در اینستاگرام ندارد — یعنی <b>سرور</b> هنوز توکن
+                Graph API ندارد تا از طرف تو پست بگذارد. ساخت کپشن، اسلاید و
+                <a class="srclink" href="/admin/kits">کیت پست</a> بدون آن هم کار می‌کند.
+              </p>`
+        }
         <div id="igOut" style="color:var(--dim);font-size:13px">
           یک پرامپت انتخاب کن و «ساخت پست» را بزن — کپشن فارسی، هشتگ‌ها و اسلایدهای کاروسل ساخته می‌شوند.
         </div>
