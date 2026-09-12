@@ -6,12 +6,20 @@
  * Slides are drawn by ig-studio.js; nothing leaves the browser until the
  * admin explicitly saves or publishes.
  */
-const igState = { post: null, canvases: [] };
+// autoLog outlives a re-render: every autopilot action reloads the tab, which
+// would otherwise throw away the run output the moment it arrived.
+const igState = { post: null, canvases: [], autoLog: '' };
 
 async function loadInsta() {
-  const [status, picks] = await Promise.all([api('/api/admin/ig/status'), api('/api/admin/ig/pick')]);
+  const [status, picks, auto] = await Promise.all([
+    api('/api/admin/ig/status'),
+    api('/api/admin/ig/pick'),
+    api('/api/admin/ig/auto'),
+  ]);
 
   $('#tab-insta').innerHTML = `
+    ${autoPanelHtml(auto)}
+
     <div class="panel">
       <h3>استودیو اینستاگرام
         <span class="sp">
@@ -63,6 +71,7 @@ async function loadInsta() {
       </div>
     </div>`;
 
+  wireAutoPanel();
   $('#igMake').onclick = () => composeIg($('#igPick').value);
   $('#igRandom').onclick = () => composeIg(null);
   $('#igConnect').onclick = async () => {
@@ -255,4 +264,178 @@ async function sendSlides(endpoint) {
       if (s.job.result.permalink) log.textContent += '\n' + s.job.result.permalink;
     }
   }, 1800);
+}
+
+/* ------------------------------------------------------------------ *
+ * Autopilot — the queue that runs without anyone watching
+ * ------------------------------------------------------------------ */
+const IG_STATUS_FA = {
+  pending: ['در نوبت رندر', 'var(--muted)'],
+  ready: ['آماده', 'var(--green)'],
+  published: ['منتشر شد', 'var(--accent-2)'],
+  posted: ['دستی پست شد', 'var(--accent-2)'],
+  skipped: ['رد شد', 'var(--dim)'],
+  failed: ['خطا', '#fda4af'],
+  cancelled: ['لغو شد', 'var(--dim)'],
+};
+
+function igWhen(utc) {
+  try {
+    return new Date(utc.replace(' ', 'T') + 'Z').toLocaleString('fa-IR', {
+      timeZone: 'Asia/Tehran',
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    });
+  } catch {
+    return utc;
+  }
+}
+
+function autoPanelHtml(a) {
+  const rows = a.queue.filter((r) => r.status !== 'cancelled');
+  const body = rows.length
+    ? rows
+        .map((r) => {
+          const [label, color] = IG_STATUS_FA[r.status] || [r.status, 'var(--muted)'];
+          const live = r.status === 'ready';
+          return `<tr>
+            <td style="white-space:nowrap;color:var(--dim);font-size:12px">${esc(igWhen(r.scheduled_at))}</td>
+            <td>${esc(r.title)}</td>
+            <td style="white-space:nowrap;color:${color};font-size:12.5px">${label}${
+              r.error ? ` <span title="${esc(r.error)}">⚠</span>` : ''
+            }</td>
+            <td style="white-space:nowrap">${
+              r.kit_url
+                ? `<a class="srclink" href="${esc(r.kit_url)}" target="_blank" rel="noopener">کیت موبایل</a>`
+                : '<span style="color:var(--dim)">—</span>'
+            }</td>
+            <td style="white-space:nowrap">${
+              live
+                ? `<button class="btn small" data-pub="${r.id}">انتشار</button>
+                   <button class="btn small" data-done="${r.id}">پست شد</button>
+                   <button class="btn small" data-drop="${r.id}">حذف</button>`
+                : ''
+            }</td>
+          </tr>`;
+        })
+        .join('')
+    : '<tr><td colspan="5" style="color:var(--dim)">صف خالی است — «اجرای فوری» را بزن تا پر شود.</td></tr>';
+
+  return `
+    <div class="panel">
+      <h3>خلبان خودکار
+        <span class="sp">
+          <span class="conn ${a.enabled ? 'on' : 'off'}">${a.enabled ? '● روشن' : '● خاموش'}</span>
+        </span>
+      </h3>
+      <div class="inner">
+        <p style="margin:0 0 14px;color:var(--muted);font-size:12.5px;line-height:2">
+          هر ۲۰ دقیقه: یک پرامپت تازه انتخاب می‌شود، کپشن و ۶ اسلاید ساخته می‌شود، و کیت موبایلش آماده می‌شود.
+          ${
+            a.connected
+              ? 'توکن API هست، پس سر ساعت خودش منتشر می‌کند.'
+              : 'توکن API نیست، پس پست‌ها آماده می‌مانند تا از کیت یا دکمه‌ی انتشار بفرستی‌شان.'
+          }
+        </p>
+
+        <div class="row" style="gap:14px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px">
+          <div><label>وضعیت</label>
+            <select class="fld" id="igAutoOn" style="max-width:130px">
+              <option value="1" ${a.enabled ? 'selected' : ''}>روشن</option>
+              <option value="0" ${a.enabled ? '' : 'selected'}>خاموش</option>
+            </select></div>
+          <div><label>پست در روز</label>
+            <select class="fld" id="igAutoPer" style="max-width:100px">
+              ${[1, 2, 3].map((n) => `<option value="${n}" ${a.per_day === n ? 'selected' : ''}>${n}</option>`).join('')}
+            </select></div>
+          <div><label>ساعت‌ها (تهران)</label>
+            <input class="fld" id="igAutoSlots" style="max-width:150px" value="${esc((a.slots || []).join(','))}"
+                   placeholder="21,13"></div>
+          <button class="btn primary" id="igAutoSave">ذخیره</button>
+          <button class="btn" id="igAutoRun">اجرای فوری</button>
+          <span id="igAutoMsg" style="font-size:12.5px;color:var(--muted)"></span>
+        </div>
+
+        <div style="font-size:12px;color:var(--dim);margin-bottom:10px">
+          کروم برای رندر: ${a.chrome ? '✔ پیدا شد' : '✘ پیدا نشد'} ·
+          توکن API: ${a.connected ? '✔ هست' : '✘ نیست'} ·
+          آخرین انتشار: ${a.last_post ? esc(igWhen(a.last_post.slice(0, 19).replace('T', ' '))) : '—'}
+        </div>
+
+        <div style="overflow-x:auto">
+          <table>
+            <thead><tr>
+              <th>زمان</th><th>عنوان</th><th>وضعیت</th><th>کیت</th><th></th>
+            </tr></thead>
+            <tbody>${body}</tbody>
+          </table>
+        </div>
+        <div class="logbox" id="igAutoLog" style="margin-top:14px;display:${
+          igState.autoLog ? 'block' : 'none'
+        }">${esc(igState.autoLog)}</div>
+      </div>
+    </div>`;
+}
+
+function wireAutoPanel() {
+  const msg = $('#igAutoMsg');
+  const say = (t, bad) => {
+    msg.style.color = bad ? '#fda4af' : 'var(--muted)';
+    msg.textContent = t;
+  };
+
+  $('#igAutoSave').onclick = async () => {
+    say('در حال ذخیره…');
+    const r = await api('/api/admin/ig/auto', {
+      method: 'POST',
+      body: {
+        enabled: $('#igAutoOn').value === '1',
+        per_day: Number($('#igAutoPer').value),
+        slots: $('#igAutoSlots').value.trim(),
+      },
+    });
+    if (r.error) return say(r.error, true);
+    toast('تنظیمات ذخیره شد');
+    loadInsta();
+  };
+
+  $('#igAutoRun').onclick = async () => {
+    const box = $('#igAutoLog');
+    box.style.display = 'block';
+    box.textContent = 'در حال اجرا — رندر هر پست چند ثانیه طول می‌کشد…';
+    say('');
+    const r = await api('/api/admin/ig/auto/run', { method: 'POST' });
+    igState.autoLog = (r.log || []).join('\n') || r.error || 'کاری برای انجام نبود.';
+    if (r.error) say(r.error, true);
+    else toast(`رندر ${r.rendered || 0} · کیت ${r.kits || 0} · انتشار ${r.published || 0}`);
+    loadInsta();
+  };
+
+  // One handler for every row button; the table is rebuilt on each load.
+  document.querySelectorAll('#tab-insta [data-pub],[data-done],[data-drop]').forEach((btn) => {
+    btn.onclick = async () => {
+      const pub = btn.getAttribute('data-pub');
+      const done = btn.getAttribute('data-done');
+      const drop = btn.getAttribute('data-drop');
+      btn.disabled = true;
+      say(pub ? 'در حال انتشار…' : 'ثبت می‌شود…');
+
+      const r = pub
+        ? await api('/api/admin/ig/auto/publish/' + pub, { method: 'POST' })
+        : done
+          ? await api('/api/admin/ig/auto/done/' + done, { method: 'POST' })
+          : await api('/api/admin/ig/auto/' + drop, { method: 'DELETE' });
+
+      if (r.error) {
+        // The status line sits above the table; with several rows on screen a
+        // message up there is easy to miss, so the toast carries it too.
+        say(r.error, true);
+        toast(r.error, false);
+        btn.disabled = false;
+        return;
+      }
+      toast(pub ? 'منتشر شد' : done ? 'ثبت شد' : 'حذف شد');
+      loadInsta();
+    };
+  });
 }
