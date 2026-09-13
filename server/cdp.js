@@ -128,6 +128,42 @@ async function closeBrowser(port) {
   } catch {}
 }
 
+/** Opens a fresh tab and returns its target descriptor. */
+async function newTab(port, url = 'about:blank') {
+  // Chrome 111+ requires PUT for /json/new.
+  const r = await fetch(`http://127.0.0.1:${port}/json/new?${encodeURIComponent(url)}`, { method: 'PUT' });
+  if (!r.ok) throw new Error('نتوانستم تب تازه باز کنم (' + r.status + ')');
+  return r.json();
+}
+
+/** Closes one tab by target id; never touches the rest of the browser. */
+async function closeTab(port, targetId) {
+  try {
+    await fetch(`http://127.0.0.1:${port}/json/close/${targetId}`);
+  } catch {}
+}
+
+/** Builds a Session bound to a specific target's websocket. */
+async function attachWs(wsUrl) {
+  const ws = new WebSocket(wsUrl);
+  await new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error('اتصال به تب طول کشید')), 10000);
+    ws.onopen = () => {
+      clearTimeout(t);
+      resolve();
+    };
+    ws.onerror = () => {
+      clearTimeout(t);
+      reject(new Error('اتصال به تب نشد'));
+    };
+  });
+  const s = new Session(ws);
+  await s.send('Page.enable');
+  await s.send('Runtime.enable');
+  await s.send('DOM.enable');
+  return s;
+}
+
 /** Picks a page target, creating one if the browser has none. */
 async function firstPage(port) {
   for (let i = 0; i < 20; i++) {
@@ -265,4 +301,4 @@ async function attach(port) {
   return s;
 }
 
-module.exports = { launch, attach, probe, firstPage, chromePath, wait, stopProfile, closeBrowser, Session };
+module.exports = { launch, attach, attachWs, newTab, closeTab, probe, firstPage, chromePath, wait, stopProfile, closeBrowser, Session };

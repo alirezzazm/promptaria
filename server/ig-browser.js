@@ -38,52 +38,65 @@ const port = () => Number(setting('ig_cdp_port', '9222')) || 9222;
 const wait = cdp.wait;
 
 /* ------------------------------------------------------------------ *
- * Session
- * ------------------------------------------------------------------ */
-/**
- * Whether instagram.com considers this profile signed in.
- *
- * The reliable marker is the nav rail, which only renders for a session; the
- * login form's presence is the negative case.
+ * The persistent browser
+ * ------------------------------------------------------------------ *
+ * Instagram invalidates a session the moment it sees it opened by a fresh,
+ * headless, or short-lived automated Chrome. The only thing it accepts is the
+ * ordinary long-lived browser the user actually signed into. So there is
+ * exactly one rule here: **one headed Chrome, started once, never headless,
+ * never closed, never duplicated.** Everything attaches to it; nothing spawns
+ * a rival instance, because a second process on the same profile resets the
+ * cookie store and logs the session out.
  */
-async function loginState(log = () => {}) {
-  const run = await cdp.launch({ port: port(), profileDir: PROFILE_DIR, headless: true });
-  const s = await cdp.attach(port());
-  try {
-    await s.navigate('https://www.instagram.com/');
-    await wait(4000);
-    const info = await s.eval(`(() => {
-      const t = document.body ? document.body.innerText : '';
-      return JSON.stringify({
-        url: location.href,
-        hasLoginForm: !!document.querySelector('input[name="username"]'),
-        hasNav: !!document.querySelector('nav, [role="navigation"]'),
-        hasCreate: /Create|ایجاد/.test(t),
-        challenge: /challenge|suspended|disabled|confirm it.s you/i.test(t + location.href),
-      });
-    })()`);
-    const st = JSON.parse(info || '{}');
-    log(`instagram.com → ${st.url}`);
-    return {
-      loggedIn: Boolean(!st.hasLoginForm && st.hasNav),
-      challenge: Boolean(st.challenge),
-      url: st.url,
-    };
-  } finally {
-    s.close();
-    await release(run);
-  }
+
+/** Attaches to the running browser, or reports that there is none. */
+async function browserUp() {
+  const v = await cdp.probe(port());
+  if (!v) return null;
+  return { headless: /HeadlessChrome/.test(v['User-Agent'] || ''), browser: v.Browser };
 }
 
 /**
- * Lets go of the profile once a headless run is over.
+ * Whether the running browser holds a live Instagram session.
  *
- * Leaving headless Chrome running looked like a cheap speed-up and was the bug:
- * it held the profile, so the sign-in window could never open. A visible window
- * is left alone — that one belongs to the user.
+ * Opens its own tab so it never disturbs whatever the user has in front — and
+ * checks the authenticated API, not a cookie: a `sessionid` can sit on disk
+ * after Instagram has already invalidated it, so only a 200 from an endpoint
+ * that needs auth proves the session is really alive.
  */
-async function release(run) {
-  if (run && run.headless) await cdp.closeBrowser(port());
+async function loginState(log = () => {}) {
+  const up = await browserUp();
+  if (!up) return { running: false, loggedIn: false, reason: 'مرورگر باز نیست — دکمه‌ی ورود را بزن' };
+  if (up.headless) return { running: true, loggedIn: false, reason: 'مرورگر headless است؛ اینستاگرام قبولش نمی‌کند' };
+
+  const tab = await cdp.newTab(port(), 'https://www.instagram.com/');
+  const s = await cdp.attachWs(tab.webSocketDebuggerUrl);
+  try {
+    await wait(6000);
+    // The private API rejects a mismatched user-agent with a 400, so it is
+    // useless as a login check. The rendered app is the honest signal: the
+    // logged-out page shows a username field, the logged-in one shows the
+    // "New post" control in the nav rail.
+    const st = await s.eval(
+      'JSON.stringify({' +
+        'loginForm: Boolean(document.querySelector("input[name=username]")),' +
+        'newPost: Array.from(document.querySelectorAll("svg[aria-label]")).some(function(e){return /New post|Create|ساخت|پست جدید/i.test(e.getAttribute("aria-label"));}),' +
+        'challenge: /challenge_required|checkpoint/i.test(location.href)' +
+        '})'
+    );
+    const o = JSON.parse(st || '{}');
+    const loggedIn = Boolean(o.newPost && !o.loginForm);
+    log('بررسی نشست: ' + (loggedIn ? 'لاگین است' : o.challenge ? 'checkpoint' : 'لاگین نیست'));
+    return {
+      running: true,
+      loggedIn,
+      challenge: Boolean(o.challenge),
+      reason: loggedIn ? null : o.challenge ? 'اینستاگرام تأیید هویت می‌خواهد' : 'نشست معتبر نیست — یک بار دیگر در پنجره وارد شو',
+    };
+  } finally {
+    s.close();
+    await cdp.closeTab(port(), tab.id);
+  }
 }
 
 /**
@@ -95,9 +108,9 @@ async function release(run) {
  * panel's sign-in button.
  */
 async function requestLoginWindow() {
-  // Free the profile first, or the window hands its URL to an invisible
-  // headless instance and never appears. The .ps1 does this too; doing it
-  // here as well means a slow task start cannot race a fresh headless launch.
+  // Free the profile first so the fresh window is the one and only instance —
+  // any leftover Chrome on this profile would either swallow the URL or, worse,
+  // race the cookie store and drop the session the user is about to create.
   await cdp.stopProfile(PROFILE_DIR);
   fs.mkdirSync(path.dirname(LOGIN_REQUEST), { recursive: true });
   fs.writeFileSync(
@@ -127,8 +140,33 @@ const CLICK_BY_TEXT = (patterns) => `(() => {
   return null;
 })()`;
 
-const NEXT = ['Next', 'بعدی', 'ادامه'];
-const SHARE = ['Share', 'اشتراک‌گذاری', 'اشتراک گذاری', 'همرسانی'];
+/** Clicks a button *inside the composer dialog* whose exact text matches. */
+const CLICK_IN_DIALOG = (patterns) => `(function(){
+  var want = [${patterns.map((p) => JSON.stringify(p)).join(',')}];
+  var scope = document.querySelector('[role=dialog]') || document;
+  var els = scope.querySelectorAll('button, div[role="button"], span[role="button"]');
+  for (var i = 0; i < els.length; i++) {
+    var el = els[i];
+    var t = (el.innerText || el.textContent || '').trim();
+    if (!t || t.length > 30) continue;
+    var hit = want.some(function(w){ return t === w || t.toLowerCase() === w.toLowerCase(); });
+    if (!hit) continue;
+    var r = el.getBoundingClientRect();
+    if (r.width < 2 || r.height < 2) continue;
+    el.click();
+    return t;
+  }
+  return null;
+})()`;
+
+/** True once the composer dialog shows a control with the given text. */
+const DIALOG_HAS = (text) => `(function(){
+  var scope = document.querySelector('[role=dialog]');
+  if (!scope) return false;
+  return Array.from(scope.querySelectorAll('button, div[role="button"]')).some(function(e){
+    return (e.innerText || '').trim() === ${JSON.stringify(text)};
+  });
+})()`;
 
 /**
  * Runs the whole create flow for one queued post.
@@ -139,84 +177,97 @@ const SHARE = ['Share', 'اشتراک‌گذاری', 'اشتراک گذاری', 
 async function publish({ imagePaths, caption }, log = () => {}) {
   for (const p of imagePaths) if (!fs.existsSync(p)) throw new Error('فایل تصویر نیست: ' + path.basename(p));
 
-  const run = await cdp.launch({ port: port(), profileDir: PROFILE_DIR, headless: true });
-  const s = await cdp.attach(port());
+  // Attach to the running browser — never launch one. A fresh or headless
+  // instance is exactly what Instagram rejects.
+  const up = await browserUp();
+  if (!up) throw new Error('مرورگر باز نیست — اول دکمه‌ی ورود را بزن و وارد شو');
+  if (up.headless) throw new Error('مرورگر headless است؛ باید پنجره‌ی عادی باز باشد');
+
+  const tab = await cdp.newTab(port(), 'https://www.instagram.com/');
+  const s = await cdp.attachWs(tab.webSocketDebuggerUrl);
 
   try {
-    log('باز کردن اینستاگرام…');
-    await s.navigate('https://www.instagram.com/');
-    await wait(4000);
-
-    const signedIn = await s.eval(
-      `!document.querySelector('input[name="username"]') && !!document.querySelector('nav, [role="navigation"]')`
+    log('بررسی نشست…');
+    await wait(6000);
+    const alive = await s.eval(
+      'Array.from(document.querySelectorAll("svg[aria-label]")).some(function(e){return /New post|Create|ساخت|پست جدید/i.test(e.getAttribute("aria-label"));}) && !document.querySelector("input[name=username]")'
     );
-    if (!signedIn) throw new Error('این پروفایل کروم به اینستاگرام لاگین نیست — اول دکمه‌ی ورود را بزن');
+    if (!alive) throw new Error('نشست اینستاگرام معتبر نیست — یک بار دیگر در پنجره وارد شو');
 
-    log('باز کردن صفحه‌ی ساخت پست…');
-    await s.navigate('https://www.instagram.com/create/style/');
-    await wait(3500);
+    log('باز کردن پنجره‌ی ساخت پست…');
+    // Click the Create control in the nav rather than the /create URL, which
+    // redirects to login on anything Instagram considers automated.
+    const opened = await s.eval(`(() => {
+      const el = [...document.querySelectorAll('svg[aria-label]')]
+        .find(e => /^(New post|Create|ساخت|پست جدید)$/i.test(e.getAttribute('aria-label')));
+      const clickable = el && (el.closest('a') || el.closest('div[role="button"]') || el.closest('span[role="button"]') || el.parentElement);
+      if (clickable) { clickable.click(); return true; }
+      return false;
+    })()`);
+    if (!opened) throw new Error('دکمه‌ی «ساخت پست» در نوار پیدا نشد');
+    await wait(1500);
+    // A submenu (Post / Reel / Live) sometimes appears first.
+    await s.eval(CLICK_BY_TEXT(['Post', 'پست']));
+    await wait(1500);
 
     log('دادن تصاویر به آپلودر…');
-    await s.until(`!!document.querySelector('input[type="file"]')`, {
+    await s.until(`Boolean(document.querySelector('input[type=file]'))`, {
       timeoutMs: 20000,
       what: 'ورودی فایل',
     });
-    await s.setFiles('input[type="file"]', imagePaths);
-    await wait(1500);
+    await s.setFiles('input[type=file]', imagePaths);
+    // Wait for the composer to leave the empty state and reach the Crop screen.
+    await s.until(DIALOG_HAS('Next'), { timeoutMs: 20000, what: 'صفحه‌ی برش' });
+    await wait(1200);
 
-    // Our slides are 4:5; the cropper opens at 1:1 and would cut them.
-    log('تنظیم نسبت تصویر روی ۴:۵…');
-    try {
-      await s.eval(`(() => {
-        const btn = document.querySelector('[aria-label="Select crop"], [aria-label="انتخاب برش"]');
-        if (btn) btn.click();
-        return !!btn;
-      })()`);
-      await wait(900);
-      const picked = await s.eval(CLICK_BY_TEXT(['Original', 'اصلی', '4:5']));
-      log(picked ? `  نسبت: ${picked}` : '  دکمه‌ی برش پیدا نشد — با نسبت پیش‌فرض ادامه می‌دهم');
-      await wait(800);
-    } catch (e) {
-      log('  برش رد شد: ' + e.message);
-    }
-
-    // Crop → Edit → Caption. Two "Next" screens, occasionally three.
-    for (let i = 0; i < 3; i++) {
-      const hit = await s.eval(CLICK_BY_TEXT(NEXT));
+    // Crop → Edit → «Create new post». Advance with the dialog's own Next until
+    // the caption box appears; the observed flow is exactly two Next screens.
+    for (let i = 0; i < 4; i++) {
+      const atCaption = await s.eval(
+        `Boolean(document.querySelector('[role=dialog] div[contenteditable=true], [role=dialog] textarea'))`
+      );
+      if (atCaption) break;
+      const hit = await s.eval(CLICK_IN_DIALOG(['Next', 'بعدی', 'ادامه']));
       if (!hit) break;
       log(`«${hit}»`);
       await wait(2500);
-      const atCaption = await s.eval(
-        `!!document.querySelector('textarea[aria-label], div[contenteditable="true"][role="textbox"]')`
-      );
-      if (atCaption) break;
     }
 
     log('نوشتن کپشن…');
-    const focused = await s.eval(`(() => {
-      const el = document.querySelector('div[contenteditable="true"][role="textbox"], textarea[aria-label]');
+    const focused = await s.eval(`(function(){
+      var el = document.querySelector('[role=dialog] div[contenteditable=true]') ||
+               document.querySelector('[role=dialog] textarea');
       if (!el) return false;
       el.focus();
       return true;
     })()`);
     if (!focused) throw new Error('جعبه‌ی کپشن پیدا نشد — احتمالاً ظاهر اینستاگرام عوض شده');
     await s.type(caption);
-    await wait(1200);
+    await wait(1500);
 
     log('انتشار…');
-    const shared = await s.eval(CLICK_BY_TEXT(SHARE));
+    const shared = await s.eval(CLICK_IN_DIALOG(['Share', 'اشتراک‌گذاری', 'اشتراک گذاری', 'همرسانی']));
     if (!shared) throw new Error('دکمه‌ی انتشار پیدا نشد');
 
-    // The confirmation panel is the only trustworthy signal; a spinner is not.
+    // Success shows either the confirmation text or, reliably, the composer
+    // dialog closing after the "Sharing" state. Poll for both.
     const ok = await s.until(
-      `/Your post has been shared|Post shared|پست شما به اشتراک گذاشته شد|منتشر شد/i.test(document.body.innerText)`,
-      { timeoutMs: 120000, everyMs: 1500, what: 'تأیید انتشار' }
+      `(function(){
+        var t = document.body ? document.body.innerText : '';
+        if (/post has been shared|Post shared|به اشتراک گذاشته شد|منتشر شد/i.test(t)) return 'confirmed';
+        var dlg = document.querySelector('[role=dialog]');
+        var sharing = dlg && /Sharing|در حال/i.test(dlg.innerText);
+        if (!dlg) return 'dialog-closed';
+        return '';
+      })()`,
+      { timeoutMs: 150000, everyMs: 2000, what: 'تأیید انتشار' }
     );
-    log('اینستاگرام انتشار را تأیید کرد ✔');
-    return { ok: true, confirmation: String(ok).slice(0, 80) };
+    log('اینستاگرام انتشار را تأیید کرد ✔ (' + ok + ')');
+    return { ok: true, confirmation: String(ok) };
   } finally {
+    // Close only our tab; the browser stays up so its session survives.
     s.close();
-    await release(run);
+    await cdp.closeTab(port(), tab.id);
   }
 }
 
