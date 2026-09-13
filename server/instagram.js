@@ -123,6 +123,17 @@ function composePost(p, opts = {}) {
     .slice(0, 3)
     .map((s) => clip(s.replace(/\*\*/g, '').replace(/`/g, ''), 95));
 
+  // Question that invites a comment — comments are the engagement signal
+  // Instagram weights most heavily, and a specific ask gets far more than
+  // "نظرت چیه؟". Rotated so a feed of posts doesn't repeat one line.
+  const prompts = [
+    'تا حالا برای این کار از هوش مصنوعی کمک گرفته بودی؟ 👇',
+    'این را روی چه کاری امتحان می‌کنی؟ برایم بنویس 👇',
+    'کدام بخشش بیشتر به کارت می‌آید؟ کامنت کن 👇',
+    'اگر سؤالی درباره‌ی استفاده‌اش داری، همین‌جا بپرس 👇',
+  ];
+  const ask = prompts[Math.floor(Math.random() * prompts.length)];
+
   const caption = [
     hook,
     '',
@@ -134,12 +145,19 @@ function composePost(p, opts = {}) {
     vars.length ? `\n⚙️ ${vars.length} جای‌خالی دارد که باید با اطلاعات خودت پر کنی.` : '',
     tips.length ? `\n💡 ${clip(tips[0], 150)}` : '',
     '',
-    `🔗 متن کامل پرامپت + آموزش فارسی در لینک بایو یا:`,
-    link,
+    // Save + share are the actions the algorithm rewards on carousels; ask for
+    // them explicitly and separately, then invite a comment, then the follow.
+    '🔖 ذخیره کن تا وقت لازم گمش نکنی',
+    '🔁 برای کسی که لازمش دارد بفرست',
+    ask,
     '',
-    'اگر به کارت آمد سیو کن و برای کسی بفرست که لازمش دارد 🔁',
+    `➕ برای پرامپت‌های بیشتر: دنبال کن @prompt_aria`,
+    `🔗 متن کامل + آموزش فارسی: ${link}`,
     '',
-    hashtags(catSlug).join(' '),
+    // A focused tag set for discovery. It rides in the caption because the
+    // browser publish path posts no first comment — in-caption guarantees they
+    // actually ship, and the ranking difference is negligible.
+    hashtags(catSlug, 12).join(' '),
   ]
     .filter((l) => l !== undefined)
     .join('\n')
@@ -148,7 +166,7 @@ function composePost(p, opts = {}) {
 
   // Carousel storyboard. The client renders each slide to a 1080x1350 canvas.
   const slides = [
-    { kind: 'cover', eyebrow: p.cat_name || 'پرامپت', title: p.title, sub: clip(p.summary.replace(/^این پرامپت\s*/, ''), 120), badge: 'Promptaria' },
+    { kind: 'cover', eyebrow: p.cat_name || 'پرامپت', title: p.title, sub: clip(p.summary.replace(/^این پرامپت\s*/, ''), 120) },
     {
       kind: 'body',
       eyebrow: 'متن پرامپت',
@@ -171,10 +189,11 @@ function composePost(p, opts = {}) {
     slides.push({ kind: 'list', eyebrow: 'نکته حرفه‌ای', title: 'اینها را رعایت کن', items: tips.slice(0, 3).map((t) => clip(t, 110)) });
   slides.push({
     kind: 'cta',
-    eyebrow: 'Promptaria',
-    title: '۳۲۰۰+ پرامپت با آموزش فارسی',
-    sub: 'promptaria.ir',
-    badge: 'سیو کن 🔖',
+    eyebrow: 'قدم بعدی',
+    title: 'اگر مفید بود، ذخیره‌اش کن',
+    sub: 'برای پرامپت‌های فارسی هر روز، @prompt_aria را دنبال کن — ۳۲۰۰+ پرامپت با آموزش کامل در promptaria.ir',
+    items: ['🔖 ذخیره کن تا گمش نکنی', '➕ دنبال کن: @prompt_aria', '🔁 برای دوستت بفرست'],
+    badge: 'دنبال کن ➕',
   });
 
   return {

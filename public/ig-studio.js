@@ -103,33 +103,105 @@
     return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
   };
 
+  /**
+   * The Promptaria mark: a gradient rounded square holding a four-point spark
+   * drawn as a real path (not an emoji), so it stays crisp at any size and
+   * reads as one recognizable logo across every slide — the repetition is what
+   * builds recall, which is half of why a feed converts to follows.
+   */
+  function drawLogoMark(ctx, x, y, size) {
+    const r = size * 0.28;
+    const mg = ctx.createLinearGradient(x, y, x + size, y + size);
+    mg.addColorStop(0, PALETTE.accent);
+    mg.addColorStop(0.6, '#6247e0');
+    mg.addColorStop(1, PALETTE.accent2);
+    ctx.fillStyle = mg;
+    roundRect(ctx, x, y, size, size, r);
+    ctx.fill();
+
+    // four-point spark
+    const cx = x + size / 2;
+    const cy = y + size / 2;
+    const R = size * 0.34; // long axis
+    const w = size * 0.1; // waist
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - R);
+    ctx.quadraticCurveTo(cx + w, cy - w, cx + R, cy);
+    ctx.quadraticCurveTo(cx + w, cy + w, cx, cy + R);
+    ctx.quadraticCurveTo(cx - w, cy + w, cx - R, cy);
+    ctx.quadraticCurveTo(cx - w, cy - w, cx, cy - R);
+    ctx.closePath();
+    ctx.fillStyle = '#fff';
+    ctx.fill();
+    // small accent dot, top-right, like a cursor blink
+    ctx.beginPath();
+    ctx.arc(x + size * 0.8, y + size * 0.2, size * 0.06, 0, Math.PI * 2);
+    ctx.fillStyle = PALETTE.gold;
+    ctx.fill();
+  }
+
   function drawBrand(ctx, index, total) {
+    ctx.save();
+    const baseY = H - 96;
+
+    // mark + wordmark + handle, left side
+    drawLogoMark(ctx, 70, baseY, 56);
+    ctx.direction = 'ltr';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = PALETTE.text;
+    ctx.font = '800 34px Vazirmatn, Tahoma, sans-serif';
+    ctx.fillText('Promptaria', 142, baseY + 26);
+    ctx.fillStyle = PALETTE.muted;
+    ctx.font = '500 24px Vazirmatn, Tahoma, sans-serif';
+    ctx.fillText('@prompt_aria', 142, baseY + 52);
+
+    // page pill, right side
+    if (total > 1) {
+      ctx.direction = 'ltr';
+      ctx.textAlign = 'right';
+      ctx.font = '600 26px Vazirmatn, Tahoma, sans-serif';
+      const label = `${index + 1}/${total}`;
+      const pw = ctx.measureText(label).width + 40;
+      ctx.fillStyle = hexA(PALETTE.accent2, 0.14);
+      roundRect(ctx, W - 70 - pw, baseY + 8, pw, 44, 22);
+      ctx.fill();
+      ctx.fillStyle = PALETTE.accent2;
+      ctx.fillText(label, W - 90, baseY + 37);
+    }
+    ctx.restore();
+  }
+
+  /** A right-pointing swipe cue for RTL carousels: readers move cover → left. */
+  function drawSwipeCue(ctx) {
     ctx.save();
     ctx.direction = 'rtl';
     ctx.textAlign = 'right';
-    ctx.font = '600 30px Vazirmatn, Tahoma, sans-serif';
-    ctx.fillStyle = PALETTE.muted;
-    ctx.fillText('promptaria.ir', W - 70, H - 62);
-
-    // logo mark
-    ctx.textAlign = 'left';
-    const mg = ctx.createLinearGradient(70, H - 100, 130, H - 50);
-    mg.addColorStop(0, PALETTE.accent);
-    mg.addColorStop(1, PALETTE.accent2);
-    ctx.fillStyle = mg;
-    roundRect(ctx, 70, H - 102, 52, 52, 15);
-    ctx.fill();
-    ctx.fillStyle = '#fff';
     ctx.font = '700 30px Vazirmatn, Tahoma, sans-serif';
-    ctx.fillText('✦', 84, H - 64);
-
-    if (total > 1) {
-      ctx.direction = 'ltr'; // an RTL run would flip this into "6 / 2"
-      ctx.textAlign = 'center';
-      ctx.fillStyle = PALETTE.muted;
-      ctx.font = '500 26px Vazirmatn, Tahoma, sans-serif';
-      ctx.fillText(`${index + 1} / ${total}`, W / 2, H - 62);
-    }
+    const label = 'بکش ببین';
+    const w = ctx.measureText(label).width + 96;
+    const x = W - 70 - w;
+    const y = H - 210;
+    ctx.fillStyle = hexA(PALETTE.gold, 0.16);
+    roundRect(ctx, x, y, w, 64, 32);
+    ctx.fill();
+    ctx.strokeStyle = hexA(PALETTE.gold, 0.5);
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = PALETTE.gold;
+    ctx.fillText(label, W - 96, y + 42);
+    // arrow pointing left (swipe direction)
+    const ax = x + 40;
+    const ay = y + 32;
+    ctx.strokeStyle = PALETTE.gold;
+    ctx.lineWidth = 4;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(ax + 16, ay);
+    ctx.lineTo(ax - 8, ay);
+    ctx.moveTo(ax, ay - 10);
+    ctx.lineTo(ax - 10, ay);
+    ctx.lineTo(ax, ay + 10);
+    ctx.stroke();
     ctx.restore();
   }
 
@@ -270,6 +342,10 @@
       ctx.fillStyle = '#fff';
       ctx.fillText(slide.badge, RIGHT - 30, by + 50);
     }
+
+    // A swipe cue on the cover lifts carousel completion — and a fully-swiped
+    // carousel is one of the strongest ranking signals Instagram acts on.
+    if (slide.kind === 'cover' && total > 1) drawSwipeCue(ctx);
 
     drawBrand(ctx, index, total);
     return canvas;
