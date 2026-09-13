@@ -24,6 +24,7 @@ const crypto = require('crypto');
 const { spawn } = require('child_process');
 const db = require('./db');
 const ig = require('./instagram');
+const igBrowser = require('./ig-browser');
 const postkit = require('./postkit');
 
 const PORT = Number(process.env.PORT || 3400);
@@ -454,25 +455,60 @@ async function tick(log = () => {}) {
     return out;
   }
 
-  if (!ig.igConfig().connected) {
+  /* A hard floor between automated posts, on top of the once-a-day slots. Even
+   * if several rows come due at once (a backlog, a clock jump), nothing posts
+   * closer together than this — a burst is exactly what gets an account
+   * flagged. */
+  const minGapH = Math.max(1, Number(setting('ig_min_gap_hours', '6')) || 6);
+  const last = setting('ig_last_post', null);
+  if (last) {
+    const sinceH = (Date.now() - Date.parse(last)) / 3600e3;
+    if (sinceH < minGapH) {
+      log(`فاصله‌ی انتشار: ${sinceH.toFixed(1)} ساعت از آخرین پست — کمتر از ${minGapH}، صبر می‌کنم`);
+      return out;
+    }
+  }
+
+  const graph = ig.igConfig().connected;
+  const browserAuto = setting('ig_auto_browser', '0') === '1';
+
+  if (!graph && !browserAuto) {
     const waiting = db
       .prepare("SELECT COUNT(*) n FROM ig_queue WHERE status = 'ready' AND scheduled_at <= datetime('now')")
       .get().n;
-    log(`${waiting} پست آماده‌ی انتشار است — توکن گراف نیست، در صف می‌ماند`);
+    log(`${waiting} پست آماده است — نه توکن گراف، نه انتشار خودکار مرورگر؛ در صف می‌ماند`);
     return out;
   }
 
   try {
-    log(`انتشار «${due.title}»…`);
-    const r = await ig.publishCarousel({
-      imageUrls: JSON.parse(due.image_urls),
-      caption: due.caption,
-      log: (l) => log('  ' + l),
-    });
+    let mediaId = 'browser';
+    if (graph) {
+      log(`انتشار «${due.title}» با API…`);
+      const r = await ig.publishCarousel({
+        imageUrls: JSON.parse(due.image_urls),
+        caption: due.caption,
+        log: (l) => log('  ' + l),
+      });
+      mediaId = String((r && (r.id || r.media_id)) || '');
+    } else {
+      // Browser route: only if the persistent window is up and holds a live
+      // session. If not, leave the row ready and fall back to the kit — never
+      // spawn a browser here, that is what invalidates the session.
+      const state = await igBrowser.loginState((l) => log('  ' + l));
+      if (!state.running || !state.loggedIn) {
+        log(`انتشار خودکار مرورگر ممکن نیست (${state.reason || 'لاگین نیست'}) — از کیت استفاده کن`);
+        return out;
+      }
+      log(`انتشار «${due.title}» با مرورگر…`);
+      await igBrowser.publish(
+        { imagePaths: igBrowser.pathsFor(due.image_urls), caption: due.caption },
+        (l) => log('  ' + l)
+      );
+    }
     db.prepare(
       `UPDATE ig_queue SET status = 'published', published_at = datetime('now'), media_id = ?, error = NULL
        WHERE id = ?`
-    ).run(String(r && (r.id || r.media_id) ? r.id || r.media_id : ''), due.id);
+    ).run(mediaId, due.id);
     putSetting('ig_last_post', new Date().toISOString());
     out.published++;
     log('منتشر شد ✔');
@@ -512,6 +548,8 @@ function stats() {
     per_day: perDay(),
     slots: slots().slice(0, perDay()),
     connected: ig.igConfig().connected,
+    browser_auto: setting('ig_auto_browser', '0') === '1',
+    min_gap_hours: Math.max(1, Number(setting('ig_min_gap_hours', '6')) || 6),
     counts: by,
     next: next || null,
     last_post: setting('ig_last_post', null),

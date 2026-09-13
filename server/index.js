@@ -597,6 +597,8 @@ app.post('/api/admin/ig/auto', requireAdmin, (req, res) => {
   if (b.enabled !== undefined) set('ig_auto', b.enabled ? '1' : '0');
   if (b.per_day !== undefined) set('ig_auto_per_day', Math.max(1, Math.min(3, Number(b.per_day) || 1)));
   if (b.slots !== undefined) set('ig_auto_slots', String(b.slots));
+  if (b.browser_auto !== undefined) set('ig_auto_browser', b.browser_auto ? '1' : '0');
+  if (b.min_gap_hours !== undefined) set('ig_min_gap_hours', Math.max(1, Math.min(48, Number(b.min_gap_hours) || 6)));
   res.json(igAuto.stats());
 });
 

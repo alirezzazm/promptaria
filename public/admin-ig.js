@@ -352,10 +352,26 @@ function autoPanelHtml(a) {
           <div><label>ساعت‌ها (تهران)</label>
             <input class="fld" id="igAutoSlots" style="max-width:150px" value="${esc((a.slots || []).join(','))}"
                    placeholder="21,13"></div>
+          <div><label>انتشار خودکار با مرورگر</label>
+            <select class="fld" id="igAutoBrowser" style="max-width:130px">
+              <option value="1" ${a.browser_auto ? 'selected' : ''}>روشن</option>
+              <option value="0" ${a.browser_auto ? '' : 'selected'}>خاموش</option>
+            </select></div>
+          <div><label>کمینه فاصله (ساعت)</label>
+            <input class="fld" id="igAutoGap" style="max-width:110px" value="${esc(a.min_gap_hours || 6)}"></div>
           <button class="btn primary" id="igAutoSave">ذخیره</button>
           <button class="btn" id="igAutoRun">اجرای فوری</button>
           <span id="igAutoMsg" style="font-size:12.5px;color:var(--muted)"></span>
         </div>
+        ${
+          a.browser_auto && !a.connected
+            ? `<p style="margin:0 0 14px;color:var(--gold);font-size:12px;line-height:1.9">
+                انتشار خودکار با مرورگر روشن است: هر پست سر ساعت خودش از طریق پنجره‌ی کروم منتشر می‌شود،
+                با کمینه ${esc(a.min_gap_hours || 6)} ساعت فاصله. پنجره‌ی ورود باید همیشه باز و لاگین بماند.
+                این خلاف شرایط اینستاگرام است و ریسکش روی حساب توست.
+              </p>`
+            : ''
+        }
 
         <div style="font-size:12px;color:var(--dim);margin-bottom:10px">
           کروم برای رندر: ${a.chrome ? '✔ پیدا شد' : '✘ پیدا نشد'} ·
@@ -409,6 +425,8 @@ function wireAutoPanel() {
         enabled: $('#igAutoOn').value === '1',
         per_day: Number($('#igAutoPer').value),
         slots: $('#igAutoSlots').value.trim(),
+        browser_auto: $('#igAutoBrowser').value === '1',
+        min_gap_hours: Number($('#igAutoGap').value) || 6,
       },
     });
     if (r.error) return say(r.error, true);
