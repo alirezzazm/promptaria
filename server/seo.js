@@ -220,7 +220,13 @@ const allCategories = () =>
 function renderHome() {
   const cats = allCategories();
   const total = db.prepare("SELECT COUNT(*) n FROM prompts WHERE status='published'").get().n;
-  const items = db.prepare(`${SEL} ORDER BY p.featured DESC, p.quality DESC, p.copies DESC LIMIT 24`).all();
+  // Persian first. The scraped English corpus is far larger and mostly scores
+  // 95, so ordering by quality alone buried every Persian prompt below a wall
+  // of English titles — the opposite of what a Persian prompt library should
+  // open with.
+  const items = db
+    .prepare(`${SEL} ORDER BY (p.lang = 'fa') DESC, p.featured DESC, p.quality DESC, p.copies DESC LIMIT 24`)
+    .all();
 
   const title = `Promptaria — کتابخانه پرامپت‌های هوش مصنوعی به فارسی | ${total.toLocaleString('en-US')} پرامپت آماده`;
   const description = `بیش از ${total.toLocaleString('en-US')} پرامپت آماده ChatGPT، Claude و Gemini در ${cats.length} دسته‌بندی — با آموزش کامل فارسی، نمونه استفاده و نکته‌های حرفه‌ای. رایگان و همیشه به‌روز.`;
@@ -343,7 +349,9 @@ function renderCategory(slug, page = 1) {
   if (!total) return null;
 
   const items = db
-    .prepare(`${SEL} AND p.category_id = ? ORDER BY p.featured DESC, p.quality DESC LIMIT ? OFFSET ?`)
+    .prepare(
+      `${SEL} AND p.category_id = ? ORDER BY (p.lang = 'fa') DESC, p.featured DESC, p.quality DESC LIMIT ? OFFSET ?`
+    )
     .all(cat.id, per, (page - 1) * per);
   const pages = Math.ceil(total / per);
   const cats = allCategories();

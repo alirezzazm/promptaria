@@ -15,7 +15,16 @@ ensureCategories();
 const cats = new Map(db.prepare('SELECT id, slug FROM categories').all().map((c) => [c.slug, c.id]));
 const trustBySource = new Map(db.prepare('SELECT id, trust FROM sources').all().map((s) => [s.id, s.trust]));
 
-const rows = db.prepare('SELECT id, title, body, tags, source_id FROM prompts').all();
+// Prompts we wrote ourselves carry a hand-picked category from content/fa-prompts.js.
+// Keyword detection is a guess; the author's choice is not, so it is kept.
+const authored = new Set(
+  db
+    .prepare("SELECT p.id FROM prompts p JOIN sources s ON s.id = p.source_id WHERE s.key = 'promptaria-original'")
+    .all()
+    .map((r) => r.id)
+);
+
+const rows = db.prepare('SELECT id, title, body, tags, source_id, category_id FROM prompts').all();
 const upd = db.prepare(
   `UPDATE prompts SET summary=?, how_to=?, tips=?, variables=?, example_use=?, expected_out=?,
      best_models=?, difficulty=?, lang=?, quality=?, category_id=? WHERE id=?`
@@ -32,7 +41,8 @@ for (const r of rows) {
   upd.run(
     e.summary, e.how_to, JSON.stringify(e.tips), JSON.stringify(e.variables), e.example_use,
     e.expected_out, JSON.stringify(e.best_models), e.difficulty, e.lang, e.quality,
-    cats.get(e.categorySlug) || cats.get('general'), r.id
+    authored.has(r.id) ? r.category_id : cats.get(e.categorySlug) || cats.get('general'),
+    r.id
   );
   n++;
 }

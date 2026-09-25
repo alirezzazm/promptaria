@@ -39,18 +39,25 @@ const clean = (s) =>
 /* ------------------------------------------------------------------ *
  * Category detection
  * ------------------------------------------------------------------ */
+/**
+ * Topic keywords per category, in both languages.
+ *
+ * These were English-only, which quietly sent 38 of the 40 authored Persian
+ * prompts into "general" — a Persian Instagram-caption prompt matched nothing
+ * and fell through. The Persian terms carry the same weight as the English.
+ */
 const CATEGORY_RULES = [
-  ['coding', ['code', 'coding', 'developer', 'programmer', 'javascript', 'python', 'regex', 'sql', 'api', 'debug', 'refactor', 'unit test', 'git', 'devops', 'docker', 'kubernetes', 'typescript', 'react', 'algorithm', 'stack trace', 'compiler', 'linux terminal', 'console', 'software', 'bug']],
-  ['writing', ['write', 'writer', 'essay', 'article', 'blog', 'story', 'novel', 'poem', 'poet', 'copy', 'editor', 'proofread', 'grammar', 'rewrite', 'paraphrase', 'summar', 'screenwriter', 'script', 'narrative', 'journalist', 'ghostwriter']],
-  ['marketing', ['marketing', 'seo', 'advert', 'campaign', 'brand', 'copywrit', 'landing page', 'email sequence', 'funnel', 'growth', 'social media', 'instagram', 'linkedin', 'tiktok', 'newsletter', 'headline', 'slogan', 'audience', 'conversion']],
-  ['business', ['business', 'startup', 'pitch', 'investor', 'strategy', 'consultant', 'swot', 'okr', 'kpi', 'revenue', 'pricing', 'market research', 'competitor', 'manager', 'product manager', 'roadmap', 'meeting', 'proposal', 'negotiat']],
-  ['education', ['teach', 'tutor', 'learn', 'study', 'student', 'explain', 'lesson', 'curriculum', 'exam', 'quiz', 'flashcard', 'professor', 'course', 'homework', 'language teacher']],
-  ['career', ['resume', 'cover letter', 'interview', 'job ', 'recruiter', 'career', 'hiring', 'portfolio', 'salary', 'promotion']],
-  ['data', ['data', 'analyst', 'analytic', 'excel', 'spreadsheet', 'statistic', 'dataset', 'chart', 'dashboard', 'pandas', 'csv', 'forecast', 'visuali']],
-  ['design', ['design', 'ux', 'logo', 'figma', 'wireframe', 'color palette', 'typography', 'midjourney', 'stable diffusion', 'dall-e', 'image prompt', 'illustration', 'photograph', 'render', '3d']],
-  ['productivity', ['productiv', 'planner', 'todo', 'schedule', 'habit', 'time management', 'organiz', 'checklist', 'workflow', 'automat', 'note-taking', 'prioriti']],
-  ['research', ['research', 'academic', 'paper', 'citation', 'literature review', 'thesis', 'scientific', 'hypothesis', 'methodolog', 'peer review', 'abstract']],
-  ['lifestyle', ['health', 'fitness', 'workout', 'diet', 'nutrition', 'recipe', 'chef', 'travel', 'therapist', 'psycholog', 'meditat', 'sleep', 'relationship', 'parent', 'budget']],
+  ['coding', ['code', 'coding', 'developer', 'programmer', 'javascript', 'python', 'regex', 'sql', 'api', 'debug', 'refactor', 'unit test', 'git', 'devops', 'docker', 'kubernetes', 'typescript', 'react', 'algorithm', 'stack trace', 'compiler', 'linux terminal', 'console', 'software', 'bug', 'کدنویسی', 'برنامه‌نویس', 'برنامه نویس', 'دیباگ', 'باگ', 'ریفکتور', 'بازبینی کد', 'کد ']],
+  ['writing', ['write', 'writer', 'essay', 'article', 'blog', 'story', 'novel', 'poem', 'poet', 'copy', 'editor', 'proofread', 'grammar', 'rewrite', 'paraphrase', 'summar', 'screenwriter', 'script', 'narrative', 'journalist', 'ghostwriter', 'نویسندگی', 'بازنویسی', 'ویرایش', 'مقاله', 'داستان', 'متن ', 'نگارش', 'خلاصه‌سازی', 'ترجمه', 'نامه', 'اسکریپت', 'سناریو', 'منو']],
+  ['marketing', ['marketing', 'seo', 'advert', 'campaign', 'brand', 'copywrit', 'landing page', 'email sequence', 'funnel', 'growth', 'social media', 'instagram', 'linkedin', 'tiktok', 'newsletter', 'headline', 'slogan', 'audience', 'conversion', 'مارکتینگ', 'تبلیغ', 'کپشن', 'اینستاگرام', 'سئو', 'برند', 'کمپین', 'هشتگ', 'پیامک تبلیغاتی', 'آگهی', 'تلگرام', 'محتوایی']],
+  ['business', ['business', 'startup', 'pitch', 'investor', 'strategy', 'consultant', 'swot', 'okr', 'kpi', 'revenue', 'pricing', 'market research', 'competitor', 'manager', 'product manager', 'roadmap', 'meeting', 'proposal', 'negotiat', 'کسب‌وکار', 'کسب و کار', 'استارتاپ', 'قیمت‌گذاری', 'قرارداد', 'مذاکره', 'رقبا', 'رقیب', 'فروش', 'مشتری', 'جلسه', 'مالیات', 'فاکتور']],
+  ['education', ['teach', 'tutor', 'learn', 'study', 'student', 'explain', 'lesson', 'curriculum', 'exam', 'quiz', 'flashcard', 'professor', 'course', 'homework', 'language teacher', 'آموزش', 'تدریس', 'یادگیری', 'درس', 'کنکور', 'دانش‌آموز', 'دانشجو', 'مطالعه', 'آزمون', 'معلم', 'مکالمه', 'زبان انگلیسی']],
+  ['career', ['resume', 'cover letter', 'interview', 'job ', 'recruiter', 'career', 'hiring', 'portfolio', 'salary', 'promotion', 'رزومه', 'مصاحبه', 'شغل', 'استخدام', 'کارفرما', 'حقوق', 'فریلنس', 'پروپوزال', 'شبکه‌سازی']],
+  ['data', ['data', 'analyst', 'analytic', 'excel', 'spreadsheet', 'statistic', 'dataset', 'chart', 'dashboard', 'pandas', 'csv', 'forecast', 'visuali', 'داده', 'تحلیل', 'اکسل', 'آمار', 'نمودار', 'گزارش فروش', 'نظرسنجی', 'پرسشنامه']],
+  ['design', ['design', 'ux', 'logo', 'figma', 'wireframe', 'color palette', 'typography', 'midjourney', 'stable diffusion', 'dall-e', 'image prompt', 'illustration', 'photograph', 'render', '3d', 'طراحی', 'لوگو', 'تصویر', 'عکس', 'میدجرنی', 'گرافیک', 'پرامپت تصویری']],
+  ['productivity', ['productiv', 'planner', 'todo', 'schedule', 'habit', 'time management', 'organiz', 'checklist', 'workflow', 'automat', 'note-taking', 'prioriti', 'بهره‌وری', 'برنامه‌ریزی', 'زمان‌بندی', 'چک‌لیست', 'اولویت', 'عادت', 'مدیریت زمان']],
+  ['research', ['research', 'academic', 'paper', 'citation', 'literature review', 'thesis', 'scientific', 'hypothesis', 'methodolog', 'peer review', 'abstract', 'پژوهش', 'تحقیق', 'پایان‌نامه', 'پایان نامه', 'مقاله علمی', 'منبع', 'روش تحقیق', 'ژورنال']],
+  ['lifestyle', ['health', 'fitness', 'workout', 'diet', 'nutrition', 'recipe', 'chef', 'travel', 'therapist', 'psycholog', 'meditat', 'sleep', 'relationship', 'parent', 'budget', 'سلامت', 'ورزش', 'تغذیه', 'رژیم', 'سفر', 'گردشگری', 'تمرین', 'خواب', 'آشپزی']],
   // NB: deliberately excludes "act as" / "you are a" — nearly every prompt in the
   // corpus opens that way, so they carry no signal about the actual topic.
   ['roleplay', ['pretend', 'roleplay', 'role play', 'in character', 'stay in character', 'dungeon', 'game master', 'text adventure', 'fictional character', 'improv', 'debate opponent', 'talk to me as']],
@@ -161,28 +168,170 @@ const CAT_GOAL = {
   general: 'گرفتن جواب بهتر و دقیق‌تر از هوش مصنوعی',
 };
 
+/**
+ * What the prompt asks the model to hand back. Ordered most-specific first, so
+ * a prompt that wants a table is described as wanting a table rather than the
+ * generic "list" its bullets would also match.
+ */
+const OUTPUT_KINDS = [
+  [/\|\s*-{3,}\s*\||\bmarkdown table\b|\bin a table\b|\btable format\b|جدول/i, 'یک جدول'],
+  [/\bjson\b|\byaml\b|\bvalid schema\b|\bstructured output\b/i, 'خروجی ساختاریافته (JSON)'],
+  [
+    /```|\bsource code\b|\bwrite (?:a |the )?(?:function|script|program|class)\b|\brefactor\b|\bthe following code\b|\bunit tests?\b|\bdebug\b|بازبینی کد|کدنویسی/i,
+    'کد',
+  ],
+  [
+    /\bmidjourney\b|\bstable diffusion\b|\bdall-?e\b|--ar \d|\bphotograph(?:ed|y)?\b|\bcinematic shot\b|پرامپت تصویری/i,
+    'پرامپت تصویری',
+  ],
+  [/\bsubject line\b|\bcold email\b|\bwrite an email\b|ایمیل کاری|متن ایمیل/i, 'ایمیل'],
+  [/کپشن/i, 'کپشن'],
+  [/\bchecklist\b|چک‌لیست/i, 'یک چک‌لیست'],
+  [
+    /\b(?:study|content|project|marketing|lesson|meal|workout)?\s?(?:plan|roadmap|schedule|calendar)\b|برنامه(?:‌| )?(?:هفتگی|ماهانه|محتوایی|مطالعه|تمرین|سفر)/i,
+    'یک برنامه',
+  ],
+  [/\breport\b|\bdetailed analysis\b|\baudit\b|گزارش/i, 'یک گزارش تحلیلی'],
+  [/\btranslate\b|\btranslation\b|ترجمه/i, 'ترجمه'],
+  [/\b(?:quiz|flashcards?|practice questions?|exam questions?)\b|آزمون|فلش‌کارت/i, 'مجموعه سؤال و تمرین'],
+  [/\bsummar(?:y|ise|ize)\b|\btl;?dr\b|\bone[- ]sentence\b|خلاصه/i, 'یک خلاصه'],
+  [/\boutline\b|\bstructure for\b|طرح کلی/i, 'یک طرح کلی'],
+  [/\b(?:blog post|article|essay|newsletter)\b|مقاله/i, 'یک متن بلند'],
+  [/\bstep[- ]by[- ]step\b|\bnumbered (?:list|steps)\b|گام‌به‌گام|قدم به قدم/i, 'راهنمای گام‌به‌گام'],
+  [/\bbullet points?\b|\ba list of\b|فهرست/i, 'یک فهرست'],
+];
+
+/** Named tools worth calling out — they tell the reader where the prompt is used. */
+const TOOLS = [
+  [/\bmidjourney\b/i, 'میدجرنی'],
+  [/\bexcel\b|\bspreadsheet\b|\bgoogle sheets\b/i, 'اکسل'],
+  [/\bsql\b|\bpostgres\b|\bmysql\b/i, 'SQL'],
+  [/\bpython\b/i, 'پایتون'],
+  [/\bjavascript\b|\btypescript\b|\breact\b/i, 'جاوااسکریپت'],
+  [/\bnotion\b/i, 'نوشن'],
+  [/\blinkedin\b/i, 'لینکدین'],
+  [/\binstagram\b/i, 'اینستاگرام'],
+  [/\bwordpress\b|\bseo\b/i, 'سئو و وردپرس'],
+];
+
+/**
+ * A description built from what this particular prompt actually contains.
+ *
+ * The previous version had exactly two sentence shapes crossed with fourteen
+ * category goals, so the whole corpus shared fifteen openings and every card
+ * on the site read the same. Variety here comes from the body: the format it
+ * asks for, whether it interviews you first, how many rules it imposes, how
+ * long the answer should be. Two prompts differ in their summaries because
+ * they differ, not because a random frame was picked.
+ */
 function buildSummary(title, body, catSlug) {
   const goal = CAT_GOAL[catSlug] || CAT_GOAL.general;
+  const raw = String(body || '');
 
-  // first real line, kept whole (never cut mid-sentence at the start)
-  const firstLine = clean(body)
-    .split('\n')
-    .map((l) => l.replace(/^[#>*\-\s]+/, '').trim())
-    .find((l) => l.length > 25 && (l.replace(/[^\p{L}\p{N}]/gu, '').length / l.length) > 0.55) || clean(body);
-  let s = firstLine.split(/(?<=[.!?؟])\s/)[0] || firstLine;
-  if (s.length > 165) s = s.slice(0, 162).replace(/\s+\S*$/, '') + '…';
+  const role = (() => {
+    // Persian prompts open "تو یک ... هستی", which the English pattern never
+    // matched — so every authored Persian prompt looked role-less.
+    // Two Persian shapes: "تو یک X هستی" and the relative form
+    // "تو یک X‌ای که …", which the first pattern walks straight past.
+    const fa =
+      raw.match(/(?:تو|شما)\s+(?:یک|یه)\s+([^.،\n؛:!?]{3,60}?)\s+(?:هستی|هستید|باش)/) ||
+      raw.match(/(?:تو|شما)\s+(?:یک|یه)\s+([^.،\n؛:!?]{3,60}?)(?:‌ای|ای)?\s+که\s/);
+    if (fa) {
+      const r = fa[1].replace(/["'`«»]/g, '').replace(/(?:‌ای|ای)$/, '').trim();
+      if (r.length >= 3) return r.length >= 55 ? r.slice(0, 55).replace(/\s+\S*$/, '').trim() : r;
+    }
+    const m = raw.match(
+      /(?:i want you to act as|i want you to be|you will act as|act as|you are|you're|pretend to be)\s+(?:an?|the)?\s*([^.,\n;:!?]{3,60})/i
+    );
+    if (!m) return null;
+    let r = m[1].replace(/["'`]/g, '').trim();
+    // "You are to act as my prompt engineer" captures the whole tail; strip the
+    // second lead-in and any possessive so the role is just the noun phrase.
+    r = r.replace(/^(?:to\s+)?(?:act\s+as|be)\s+/i, '').replace(/^(?:an?|the|my|your)\s+/i, '').trim();
+    if (r.length >= 55) r = r.slice(0, 55).replace(/\s+\S*$/, '').trim();
+    // Adverbs and filler slip through the pattern ("you are totally …"); a real
+    // role has a noun in it, not a single -ly word.
+    if (!r || r.length < 4 || /^\w+ly$/i.test(r) || /^(?:going|about|not|very|really|totally|here|now)\b/i.test(r)) {
+      return null;
+    }
+    return r;
+  })();
 
-  const roleMatch = body.match(
-    /(?:i want you to act as|i want you to be|you will act as|act as|you are|you're|pretend to be)\s+(?:an?|the)?\s*([^.,\n;:!?]{3,60})/i
-  );
-  let role = roleMatch ? roleMatch[1].replace(/["'`]/g, '').trim() : null;
-  if (role && role.length >= 55) role = role.slice(0, 55).replace(/\s+\S*$/, '').trim(); // never cut a word
+  const format = (OUTPUT_KINDS.find(([re]) => re.test(raw)) || [])[1] || null;
+  const asksFirst =
+    /\bask (?:me )?(?:a series of |several |some |\d+ )?questions?\b|\bbefore (?:you |we )?(?:begin|start|proceed)\b|\bone question at a time\b/i.test(
+      raw
+    ) || /(?:اول|ابتدا|قبل از شروع)[^.\n]{0,30}(?:سؤال|سوال)|یک سؤال بپرس|سؤال بپرس/.test(raw);
+  // Persian prompts number their steps with Persian digits, which \d misses.
+  const steps =
+    (raw.match(/^\s*\d+[.)]\s/gm) || []).length + (raw.match(/^\s*[۰-۹]+[.)]\s/gm) || []).length;
+  const rules =
+    (raw.match(/\b(?:do not|don't|never|avoid|must not|refrain from)\b/gi) || []).length +
+    (raw.match(/(?:نکن|نباید|هرگز|پرهیز کن|خودداری کن)/g) || []).length;
+  const lengthSpec =
+    raw.match(/\b(\d{2,4})\s*(words|characters|paragraphs)\b/i) ||
+    (() => {
+      const m = raw.match(/([۰-۹\d]{2,4})\s*(کلمه|کاراکتر|پاراگراف)/);
+      if (!m) return null;
+      const n = m[1].replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)));
+      return [m[0], n, m[2]];
+    })();
+  const sections = (raw.match(/^#{1,3}\s+\S/gm) || []).length;
+  // Placeholders come in several house styles: {{name}}, [FIELD], and plain
+  // [details]. The markdown-link case ("[text](url)") is excluded so prose
+  // links are not counted as fields to fill in.
+  const vars = (raw.match(/\{\{[^}]{1,60}\}\}|\[[A-Za-z][^\]\n]{1,40}\](?!\()/g) || []).length;
+  const tool = (TOOLS.find(([re]) => re.test(raw)) || [])[1] || null;
 
-  if (role) {
-    return `این پرامپت به هوش مصنوعی نقش «${role}» را می‌دهد و برای ${goal} به کار می‌آید. جمله آغازین آن: «${s}»`;
+  // Build a few concrete clauses, then keep the two or three that exist. The
+  // mix of which clauses fire is what makes one summary differ from the next.
+  const facts = [];
+  if (asksFirst) facts.push('اول چند سؤال از تو می‌پرسد و بعد شروع می‌کند');
+  if (format) facts.push(`خروجی را به شکل ${format} می‌دهد`);
+  if (steps >= 3) facts.push(`کار را در ${toFa(steps)} قدم شماره‌گذاری‌شده پیش می‌برد`);
+  else if (sections >= 3) facts.push(`جواب را در ${toFa(sections)} بخش جدا سازمان می‌دهد`);
+  if (lengthSpec) {
+    const u = lengthSpec[2];
+    const unit = /word|کلمه/i.test(u) ? 'کلمه' : /character|کاراکتر/i.test(u) ? 'کاراکتر' : 'پاراگراف';
+    facts.push(`طول خروجی را حدود ${toFa(Number(lengthSpec[1]))} ${unit} تعیین می‌کند`);
   }
-  return `این پرامپت برای ${goal} نوشته شده است. چیزی که از مدل می‌خواهد: «${s}»`;
+  if (rules >= 4) facts.push(`${toFa(rules)} قید و «نباید» دارد تا جواب از مسیر خارج نشود`);
+  if (vars >= 2) facts.push(`${toFa(vars)} جای‌خالی دارد که با اطلاعات خودت پر می‌شود`);
+  if (tool) facts.push(`مخصوص کار با ${tool} است`);
+
+  const head = role
+    ? `مدل را در نقش «${role}» می‌نشاند`
+    : `برای ${goal} نوشته شده`;
+
+  if (!facts.length && role) {
+    // A short role-only prompt ("I want you to act as an astrologer.") has
+    // nothing structural to report, and quoting its one English line adds
+    // nothing a Persian reader can use.
+    return `مدل را در نقش «${role}» می‌نشاند و برای ${goal} به کار می‌آید.`;
+  }
+
+  if (!facts.length) {
+    // Nothing structural and no role — fall back to the opening instruction,
+    // which at least differs per prompt.
+    const first = clean(raw)
+      .split('\n')
+      .map((l) => l.replace(/^[#>*\-\s]+/, '').trim())
+      .find((l) => l.length > 25 && l.replace(/[^\p{L}\p{N}]/gu, '').length / l.length > 0.55) || clean(raw);
+    let s = first.split(/(?<=[.!?؟])\s/)[0] || first;
+    if (s.length > 150) s = s.slice(0, 147).replace(/\s+\S*$/, '') + '…';
+    return `${head} و کارش این است: «${s}»`;
+  }
+
+  const picked = facts.slice(0, 2);
+  const tail = picked.length === 2 ? `${picked[0]}، و ${picked[1]}` : picked[0];
+  return clip220(`${head}، ${tail}.`);
 }
+
+/** Persian digits, so numbers inside a Persian sentence don't read as foreign. */
+function toFa(n) {
+  return String(n).replace(/\d/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[Number(d)]);
+}
+const clip220 = (s) => (s.length <= 220 ? s : s.slice(0, 217).replace(/\s+\S*$/, '') + '…');
 
 function buildHowTo({ title, body, catSlug, vars, difficulty }) {
   const steps = [];
