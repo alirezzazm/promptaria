@@ -36,6 +36,9 @@ let skipped = 0;
 for (const item of items) {
   // category is authored, not guessed — pass it through so enrich() keeps it
   const e = enrich({ title: item.title, body: item.body, tags: item.tags, category: item.category }, 99);
+  // A hand-written card summary says what the reader gets; the generated one can
+  // only describe how the prompt is built, so the authored one wins when present.
+  const summary = item.summary || e.summary;
   const id = uid(SOURCE_KEY, e.title, e.body);
   const hash = bodyHash(e.body);
 
@@ -45,18 +48,26 @@ for (const item of items) {
     continue;
   }
 
-  const existing = db.prepare('SELECT id, body_hash FROM prompts WHERE uid = ?').get(id);
+  const existing = db.prepare('SELECT id, body_hash, summary FROM prompts WHERE uid = ?').get(id);
   if (existing) {
     if (existing.body_hash === hash) {
-      skipped++;
+      // Body untouched, but a summary can be written or reworded on its own.
+      if (existing.summary !== summary) {
+        db.prepare(`UPDATE prompts SET summary=?, updated_at=datetime('now') WHERE id=?`).run(summary, existing.id);
+        updated++;
+      } else {
+        skipped++;
+      }
       continue;
     }
+    // featured=1 is a ranking boost here (assistant, collections, "best" sort), not
+    // the card label — seo.js labels originals "تألیف اختصاصی" instead of "منتخب".
     db.prepare(
       `UPDATE prompts SET title=?, body=?, summary=?, how_to=?, tips=?, variables=?, example_use=?,
        expected_out=?, best_models=?, tags=?, category_id=?, difficulty=?, lang='fa', quality=?,
        body_hash=?, featured=1, updated_at=datetime('now') WHERE id=?`
     ).run(
-      e.title, e.body, e.summary, e.how_to, JSON.stringify(e.tips), JSON.stringify(e.variables),
+      e.title, e.body, summary, e.how_to, JSON.stringify(e.tips), JSON.stringify(e.variables),
       e.example_use, e.expected_out, JSON.stringify(e.best_models), JSON.stringify(e.tags),
       catId(item.category), e.difficulty, e.quality, hash, existing.id
     );
@@ -70,7 +81,7 @@ for (const item of items) {
       source_id, source_url, source_author, body_hash)
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,'fa',?,'published',1,?,?,?,?)`
   ).run(
-    id, e.title, e.slug, e.body, e.summary, e.how_to, JSON.stringify(e.tips), JSON.stringify(e.variables),
+    id, e.title, e.slug, e.body, summary, e.how_to, JSON.stringify(e.tips), JSON.stringify(e.variables),
     e.example_use, e.expected_out, JSON.stringify(e.best_models), JSON.stringify(e.tags),
     catId(item.category), e.difficulty, e.quality, src.id, 'https://promptaria.ir', 'Promptaria', hash
   );

@@ -14,6 +14,15 @@ const esc = (s) =>
   String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 const FA = (n) => String(n).replace(/\d/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[d]);
+// Same as the server-rendered cards: Persian digits with grouping ("۱٬۲۳۴").
+const faNum = (n) => Number(n || 0).toLocaleString('fa-IR');
+// Mirrors badge() in server/seo.js — keep the two in step.
+const badge = (p) =>
+  p.original
+    ? '<span class="pill fa" title="این پرامپت را خود پرامپت‌آریا به فارسی نوشته است">✎ تألیف اختصاصی</span>'
+    : p.featured
+      ? '<span class="pill gold" title="از میان پرامپت‌های کتابخانه دستی انتخاب شده">★ منتخب</span>'
+      : '';
 const DIFF_FA = { easy: 'ساده', medium: 'متوسط', advanced: 'پیشرفته' };
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -92,9 +101,9 @@ function animateCounters() {
     const tick = (now) => {
       const t = Math.min(1, (now - start) / dur);
       const eased = 1 - Math.pow(1 - t, 3);
-      el.textContent = Math.round(to * eased).toLocaleString('en-US');
+      el.textContent = faNum(Math.round(to * eased));
       if (t < 1) requestAnimationFrame(tick);
-      else el.textContent = to.toLocaleString('en-US');
+      else el.textContent = faNum(to);
     };
     requestAnimationFrame(tick);
   }
@@ -136,7 +145,7 @@ function readingProgress() {
  * Home / category live filtering (no page reload)
  * ------------------------------------------------------------------ */
 const cardHtml = (p) => `
-<article class="card${p.featured ? ' feat' : ''}">
+<article class="card${p.featured && !p.original ? ' feat' : ''}">
   <a class="card-link" href="/p/${esc(p.slug)}-${esc(p.id)}">
     <div class="top">
       <div class="cat-ico" aria-hidden="true">${esc(p.category_icon || '✦')}</div>
@@ -148,8 +157,8 @@ const cardHtml = (p) => `
     <p class="sum">${esc(p.summary)}</p>
     <div class="meta">
       <span class="pill ${esc(p.difficulty)}">${DIFF_FA[p.difficulty] || ''}</span>
-      ${p.featured ? '<span class="pill gold">★ منتخب</span>' : ''}
-      <span class="stat-mini">⧉ ${FA(p.copies)} · ◉ ${FA(p.views)}</span>
+      ${badge(p)}
+      <span class="stat-mini">${faNum(p.views)} بازدید${p.copies ? ` · ${faNum(p.copies)} کپی` : ''}</span>
     </div>
   </a>
 </article>`;
@@ -179,7 +188,7 @@ function wireCatalog() {
     const count = $('#count');
     if (count) {
       count.innerHTML = d.total
-        ? `<b>${FA(d.total.toLocaleString('en-US'))}</b> پرامپت${state.q ? ` برای «${esc(state.q)}»` : ''}`
+        ? `<b>${faNum(d.total)}</b> پرامپت${state.q ? ` برای «${esc(state.q)}»` : ''}`
         : 'نتیجه‌ای پیدا نشد';
     }
     grid.className = 'grid stagger';

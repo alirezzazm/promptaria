@@ -176,8 +176,31 @@ const footer = (cats = []) => `
 
 const DIFF_FA = { easy: 'ساده', medium: 'متوسط', advanced: 'پیشرفته' };
 
+// Counts shown to readers, in Persian digits with grouping ("۱٬۲۳۴").
+const faNum = (n) => Number(n || 0).toLocaleString('fa-IR');
+
+// Prompts written for the site itself (content/fa-prompts.js) come from one
+// source row that seed-fa creates. Looked up lazily and re-tried while missing.
+let originalSrcId = null;
+const isOriginal = (p) => {
+  if (originalSrcId == null) {
+    const r = db.prepare("SELECT id FROM sources WHERE key = 'promptaria-original'").get();
+    originalSrcId = r ? r.id : null;
+  }
+  return originalSrcId != null && p.source_id === originalSrcId;
+};
+
+// One provenance badge at most. "We wrote it" outranks "we picked it": it is the
+// stronger reason to open the prompt, and nothing else on the web has it.
+const badge = (p) =>
+  isOriginal(p)
+    ? '<span class="pill fa" title="این پرامپت را خود پرامپت‌آریا به فارسی نوشته است">✎ تألیف اختصاصی</span>'
+    : p.featured
+      ? '<span class="pill gold" title="از میان پرامپت‌های کتابخانه دستی انتخاب شده">★ منتخب</span>'
+      : '';
+
 const cardHtml = (p) => `
-<article class="card${p.featured ? ' feat' : ''}" data-id="${esc(p.uid)}">
+<article class="card${p.featured && !isOriginal(p) ? ' feat' : ''}" data-id="${esc(p.uid)}">
   <a class="card-link" href="/p/${esc(p.slug)}-${esc(p.uid)}">
     <div class="top">
       <div class="cat-ico" aria-hidden="true">${esc(p.icon || '✦')}</div>
@@ -189,8 +212,8 @@ const cardHtml = (p) => `
     <p class="sum">${esc(clip(p.summary, 165))}</p>
     <div class="meta">
       <span class="pill ${esc(p.difficulty)}">${DIFF_FA[p.difficulty] || ''}</span>
-      ${p.featured ? '<span class="pill gold">★ منتخب</span>' : ''}
-      <span class="stat-mini">⧉ ${p.copies} · ◉ ${p.views}</span>
+      ${badge(p)}
+      <span class="stat-mini">${faNum(p.views)} بازدید${p.copies ? ` · ${faNum(p.copies)} کپی` : ''}</span>
     </div>
   </a>
 </article>`;
@@ -199,7 +222,7 @@ const cardHtml = (p) => `
  * Queries
  * ------------------------------------------------------------------ */
 const SEL = `
-  SELECT p.id, p.uid, p.slug, COALESCE(p.title_fa, p.title) AS title, p.title AS title_en, p.summary, p.difficulty, p.featured, p.views, p.copies,
+  SELECT p.id, p.uid, p.slug, COALESCE(p.title_fa, p.title) AS title, p.title AS title_en, p.summary, p.difficulty, p.featured, p.views, p.copies, p.source_id,
          p.quality, p.updated_at, p.created_at, c.slug AS cat_slug, c.name_fa AS cat_name, c.icon
   FROM prompts p LEFT JOIN categories c ON c.id = p.category_id
   WHERE p.status = 'published'`;
@@ -269,7 +292,7 @@ ${header('home')}
     <p class="badge"><span class="dot"></span> کتابخانه‌ای که خودش را به‌روز می‌کند</p>
     <h1 class="reveal">هر کاری با هوش مصنوعی،<br><span class="grad">با پرامپت درستش</span></h1>
     <p class="lede reveal d1">
-      ${total.toLocaleString('en-US')} پرامپت آماده برای ChatGPT، Claude و Gemini — دسته‌بندی‌شده،
+      ${faNum(total)} پرامپت آماده برای ChatGPT، Claude و Gemini — دسته‌بندی‌شده،
       امتیازدهی‌شده و همراه با آموزش فارسی که دقیقاً می‌گوید چطور از هرکدام بهترین نتیجه را بگیری.
     </p>
     <form class="searchbar reveal d2" role="search" action="/search" method="get">
@@ -285,20 +308,20 @@ ${header('home')}
     </p>
     <div class="assist" id="assist" hidden aria-live="polite"></div>
     <div class="stats-row reveal d3">
-      <div class="stat"><b class="counter" data-to="${total}">${total.toLocaleString('en-US')}</b><span>پرامپت آماده</span></div>
-      <div class="stat"><b class="counter" data-to="${cats.length}">${cats.length}</b><span>دسته‌بندی</span></div>
+      <div class="stat"><b class="counter" data-to="${total}">${faNum(total)}</b><span>پرامپت آماده</span></div>
+      <div class="stat"><b class="counter" data-to="${cats.length}">${faNum(cats.length)}</b><span>دسته‌بندی</span></div>
       <div class="stat"><b id="stUpd">—</b><span>آخرین به‌روزرسانی</span></div>
     </div>
   </section>
 
   <nav class="chips wrap" id="chips" aria-label="دسته‌بندی پرامپت‌ها">
-    <a class="chip active" href="/" data-cat="all">✨ همه <span class="n">${total}</span></a>
-    ${cats.map((c) => `<a class="chip" href="/c/${esc(c.slug)}" data-cat="${esc(c.slug)}" title="${esc(c.description)}">${esc(c.icon)} ${esc(c.name_fa)} <span class="n">${c.count}</span></a>`).join('')}
+    <a class="chip active" href="/" data-cat="all">✨ همه <span class="n">${faNum(total)}</span></a>
+    ${cats.map((c) => `<a class="chip" href="/c/${esc(c.slug)}" data-cat="${esc(c.slug)}" title="${esc(c.description)}">${esc(c.icon)} ${esc(c.name_fa)} <span class="n">${faNum(c.count)}</span></a>`).join('')}
   </nav>
 
   <div class="wrap">
     <div class="toolbar">
-      <p class="count" id="count"><b>${total.toLocaleString('en-US')}</b> پرامپت</p>
+      <p class="count" id="count"><b>${faNum(total)}</b> پرامپت</p>
       <label class="sr-only" for="difficulty">سطح</label>
       <select class="sel" id="difficulty">
         <option value="all">همه سطح‌ها</option><option value="easy">ساده</option>
@@ -403,12 +426,12 @@ ${header('cats')}
   <nav class="crumbs wrap" aria-label="مسیر"><a href="/">خانه</a> › <a href="/categories">دسته‌بندی‌ها</a> › <span>${esc(cat.name_fa)}</span></nav>
   <section class="wrap cat-head">
     <h1><span aria-hidden="true">${esc(cat.icon)}</span> پرامپت‌های ${esc(cat.name_fa)}</h1>
-    <p class="lede">${esc(cat.description)} — ${total} پرامپت آماده، هرکدام با آموزش فارسی استفاده.</p>
+    <p class="lede">${esc(cat.description)} — ${faNum(total)} پرامپت آماده، هرکدام با آموزش فارسی استفاده.</p>
   </section>
 
   <nav class="chips wrap" aria-label="دسته‌بندی پرامپت‌ها">
     <a class="chip" href="/">✨ همه</a>
-    ${cats.map((c) => `<a class="chip${c.slug === slug ? ' active' : ''}" href="/c/${esc(c.slug)}">${esc(c.icon)} ${esc(c.name_fa)} <span class="n">${c.count}</span></a>`).join('')}
+    ${cats.map((c) => `<a class="chip${c.slug === slug ? ' active' : ''}" href="/c/${esc(c.slug)}">${esc(c.icon)} ${esc(c.name_fa)} <span class="n">${faNum(c.count)}</span></a>`).join('')}
   </nav>
 
   <div class="wrap">
@@ -564,9 +587,9 @@ ${header()}
       <div class="kv">
         <a class="pill" href="/c/${esc(p.cat_slug || 'general')}">${esc(p.icon || '✦')} ${esc(p.cat_name || 'عمومی')}</a>
         <span class="pill ${esc(p.difficulty)}">سطح ${DIFF_FA[p.difficulty] || ''}</span>
-        <span class="pill">کیفیت ${p.quality}٪</span>
-        <span class="pill">${p.body.length} کاراکتر</span>
-        ${p.featured ? '<span class="pill gold">★ منتخب</span>' : ''}
+        <span class="pill">کیفیت ${faNum(p.quality)}٪</span>
+        <span class="pill">${faNum(p.body.length)} کاراکتر</span>
+        ${badge(p)}
       </div>
       <p class="lede">${esc(p.summary)}</p>
     </header>
@@ -672,7 +695,7 @@ ${header('cats')}
   <nav class="crumbs" aria-label="مسیر"><a href="/">خانه</a> › <span>دسته‌بندی‌ها</span></nav>
   <section class="cat-head">
     <h1>دسته‌بندی‌های پرامپت</h1>
-    <p class="lede">${total.toLocaleString('en-US')} پرامپت در ${cats.length} دسته. روی هر دسته بزن تا همه پرامپت‌هایش را ببینی.</p>
+    <p class="lede">${faNum(total)} پرامپت در ${faNum(cats.length)} دسته. روی هر دسته بزن تا همه پرامپت‌هایش را ببینی.</p>
   </section>
   <div class="grid stagger">
     ${cats
@@ -681,7 +704,7 @@ ${header('cats')}
           <div class="top"><div class="cat-ico" aria-hidden="true">${esc(c.icon)}</div>
           <div class="tw"><h2 class="h3">${esc(c.name_fa)}</h2><div class="cat-name">${esc(c.name_en)}</div></div></div>
           <p class="sum">${esc(c.description)}</p>
-          <div class="meta"><span class="pill">${c.count} پرامپت</span></div></a></article>`
+          <div class="meta"><span class="pill">${faNum(c.count)} پرامپت</span></div></a></article>`
       )
       .join('')}
   </div>

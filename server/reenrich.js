@@ -24,7 +24,9 @@ const authored = new Set(
     .map((r) => r.id)
 );
 
-const rows = db.prepare('SELECT id, title, body, tags, source_id, category_id FROM prompts').all();
+// Their card summary is hand-written too (seed-fa owns it), so it is kept for the
+// same reason — regenerating it would put the structural template back every run.
+const rows = db.prepare('SELECT id, title, body, tags, source_id, category_id, summary FROM prompts').all();
 const upd = db.prepare(
   `UPDATE prompts SET summary=?, how_to=?, tips=?, variables=?, example_use=?, expected_out=?,
      best_models=?, difficulty=?, lang=?, quality=?, category_id=? WHERE id=?`
@@ -39,7 +41,7 @@ for (const r of rows) {
   } catch {}
   const e = enrich({ title: r.title, body: r.body, tags }, trustBySource.get(r.source_id) || 70);
   upd.run(
-    e.summary, e.how_to, JSON.stringify(e.tips), JSON.stringify(e.variables), e.example_use,
+    authored.has(r.id) && r.summary ? r.summary : e.summary, e.how_to, JSON.stringify(e.tips), JSON.stringify(e.variables), e.example_use,
     e.expected_out, JSON.stringify(e.best_models), e.difficulty, e.lang, e.quality,
     authored.has(r.id) ? r.category_id : cats.get(e.categorySlug) || cats.get('general'),
     r.id

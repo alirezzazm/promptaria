@@ -55,6 +55,17 @@ const parseJson = (s, f) => {
   }
 };
 
+// Whether a row is one of the prompts written for the site itself. Exposed as a
+// plain flag so cards can label it — the source row itself stays private.
+let originalSrcId = null;
+function isOriginal(row) {
+  if (originalSrcId == null) {
+    const r = db.prepare("SELECT id FROM sources WHERE key = 'promptaria-original'").get();
+    originalSrcId = r ? r.id : null;
+  }
+  return originalSrcId != null && row.source_id === originalSrcId;
+}
+
 /** Public shape — deliberately omits source_url / source_id / source_author / body_hash. */
 function publicPrompt(row, full = false) {
   const base = {
@@ -70,6 +81,7 @@ function publicPrompt(row, full = false) {
     lang: row.lang,
     quality: row.quality,
     featured: !!row.featured,
+    original: isOriginal(row),
     views: row.views,
     copies: row.copies,
     likes: row.likes,
@@ -137,7 +149,9 @@ app.get('/api/prompts', (req, res) => {
   if (req.query.featured === '1') where.push('p.featured = 1');
 
   const sortMap = {
-    best: 'p.featured DESC, p.quality DESC, p.copies DESC',
+    // Same order as the server-rendered home page (seo.js), so switching a filter
+    // and back does not reshuffle the grid the reader was already looking at.
+    best: "(p.lang = 'fa') DESC, p.featured DESC, p.quality DESC, p.copies DESC",
     new: 'p.created_at DESC, p.id DESC',
     popular: 'p.copies DESC, p.views DESC',
     az: 'p.title ASC',
