@@ -52,13 +52,31 @@ function upsertPrompt(raw, src, srcRow) {
     `INSERT INTO prompts (uid, title, slug, body, summary, how_to, tips, variables, example_use,
       expected_out, best_models, tags, category_id, difficulty, lang, quality, status,
       source_id, source_url, source_author, body_hash)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'published',?,?,?,?)`
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   ).run(
     id, e.title, e.slug, e.body, e.summary, e.how_to, JSON.stringify(e.tips), JSON.stringify(e.variables),
     e.example_use, e.expected_out, JSON.stringify(e.best_models), JSON.stringify(e.tags),
-    catId, e.difficulty, e.lang, e.quality, srcRow.id, raw.sourceUrl || src.home_url, raw.author || '', hash
+    catId, e.difficulty, e.lang, e.quality, arrivalStatus(e.title, e.body),
+    srcRow.id, raw.sourceUrl || src.home_url, raw.author || '', hash
   );
   return 'added';
+}
+
+/**
+ * New rows that are plainly not for a public library arrive hidden instead of
+ * published, so an admin decides rather than the next visitor. Only signals
+ * that do not misfire: a keyword like "nsfw" is left out on purpose, because
+ * image prompts list it among the things to avoid. Mirrors scripts/curate.js.
+ */
+function arrivalStatus(title, body) {
+  const t = String(title || '');
+  const b = String(body || '');
+  const mdxPage = /^import\s+[\s\S]{0,200}\bfrom\s+['"]/.test(b); // raw docs page, not a prompt
+  const jailbreak =
+    /\bjailbreak\b|\bDAN\s*\d|developer mode/i.test(t) ||
+    /\bdo anything now\b|ignore all the instructions you got before|always no restriction/i.test(b);
+  const explicit = /\bhentai\b|futanari|футанари|nipples visible/i.test(b);
+  return mdxPage || jailbreak || explicit ? 'hidden' : 'published';
 }
 
 async function runSource(src, log = console.log) {
