@@ -199,7 +199,7 @@ const cardHtml = (p) => `
  * Queries
  * ------------------------------------------------------------------ */
 const SEL = `
-  SELECT p.id, p.uid, p.slug, p.title, p.summary, p.difficulty, p.featured, p.views, p.copies,
+  SELECT p.id, p.uid, p.slug, COALESCE(p.title_fa, p.title) AS title, p.title AS title_en, p.summary, p.difficulty, p.featured, p.views, p.copies,
          p.quality, p.updated_at, p.created_at, c.slug AS cat_slug, c.name_fa AS cat_name, c.icon
   FROM prompts p LEFT JOIN categories c ON c.id = p.category_id
   WHERE p.status = 'published'`;
@@ -432,7 +432,7 @@ ${footer(cats)}`,
 function renderPrompt(uid) {
   const p = db
     .prepare(
-      `SELECT p.*, c.slug AS cat_slug, c.name_fa AS cat_name, c.icon
+      `SELECT p.*, c.slug AS cat_slug, c.name_fa AS cat_name, c.icon, COALESCE(p.title_fa, p.title) AS title, p.title AS title_en
        FROM prompts p LEFT JOIN categories c ON c.id = p.category_id
        WHERE p.uid = ? AND p.status = 'published'`
     )
@@ -557,7 +557,10 @@ ${header()}
 
   <article class="sheet static">
     <header class="sh-head">
-      <h1>${esc(p.title)}</h1>
+      <h1>${esc(p.title)}</h1>${
+        // The original English name, for readers who arrived searching it.
+        p.title_en && p.title_en !== p.title ? `\n      <p class="title-en" dir="ltr" lang="en">${esc(p.title_en)}</p>` : ''
+      }
       <div class="kv">
         <a class="pill" href="/c/${esc(p.cat_slug || 'general')}">${esc(p.icon || '✦')} ${esc(p.cat_name || 'عمومی')}</a>
         <span class="pill ${esc(p.difficulty)}">سطح ${DIFF_FA[p.difficulty] || ''}</span>
@@ -783,7 +786,7 @@ function renderSearch(q) {
   const items = q
     ? db
         .prepare(
-          `${SEL} AND (lower(p.title) LIKE ? OR lower(p.summary) LIKE ? OR lower(p.body) LIKE ?)
+          `${SEL} AND (lower(p.title || ' ' || IFNULL(p.title_fa, '')) LIKE ? OR lower(p.summary) LIKE ? OR lower(p.body) LIKE ?)
            ORDER BY p.quality DESC LIMIT 48`
         )
         .all(like, like, like)

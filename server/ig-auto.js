@@ -110,7 +110,7 @@ function pickPrompt() {
     .get();
 
   const sql = (extra) => `
-    SELECT p.*, c.slug AS cat_slug, c.name_fa AS cat_name, c.icon
+    SELECT p.*, c.slug AS cat_slug, c.name_fa AS cat_name, c.icon, COALESCE(p.title_fa, p.title) AS title, p.title AS title_en
     FROM prompts p
     LEFT JOIN categories c ON c.id = p.category_id
     LEFT JOIN sources s ON s.id = p.source_id
@@ -161,7 +161,7 @@ function enqueue({ uid = null, at = null } = {}) {
   const row = uid
     ? db
         .prepare(
-          `SELECT p.*, c.slug AS cat_slug, c.name_fa AS cat_name, c.icon
+          `SELECT p.*, c.slug AS cat_slug, c.name_fa AS cat_name, c.icon, COALESCE(p.title_fa, p.title) AS title, p.title AS title_en
            FROM prompts p LEFT JOIN categories c ON c.id = p.category_id WHERE p.uid = ?`
         )
         .get(uid)
@@ -320,7 +320,7 @@ function jobByToken(token) {
 function makeKit(row, log = () => {}) {
   const p = db
     .prepare(
-      `SELECT p.*, c.slug AS cat_slug FROM prompts p
+      `SELECT p.*, c.slug AS cat_slug, COALESCE(p.title_fa, p.title) AS title, p.title AS title_en FROM prompts p
        LEFT JOIN categories c ON c.id = p.category_id WHERE p.uid = ?`
     )
     .get(row.prompt_uid);

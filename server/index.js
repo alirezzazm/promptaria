@@ -90,7 +90,7 @@ function publicPrompt(row, full = false) {
 }
 
 const SELECT_PUBLIC = `
-  SELECT p.*, c.slug AS cat_slug, c.name_fa AS cat_name, c.icon AS cat_icon
+  SELECT p.*, c.slug AS cat_slug, c.name_fa AS cat_name, c.icon AS cat_icon, COALESCE(p.title_fa, p.title) AS title, p.title AS title_en
   FROM prompts p LEFT JOIN categories c ON c.id = p.category_id
 `;
 
@@ -131,7 +131,7 @@ app.get('/api/prompts', (req, res) => {
   }
   if (req.query.q) {
     const q = '%' + String(req.query.q).trim().toLowerCase() + '%';
-    where.push('(lower(p.title) LIKE ? OR lower(p.summary) LIKE ? OR lower(p.body) LIKE ? OR lower(p.tags) LIKE ?)');
+    where.push('(lower(p.title || \' \' || IFNULL(p.title_fa, \'\')) LIKE ? OR lower(p.summary) LIKE ? OR lower(p.body) LIKE ? OR lower(p.tags) LIKE ?)');
     args.push(q, q, q, q);
   }
   if (req.query.featured === '1') where.push('p.featured = 1');
@@ -426,7 +426,7 @@ app.get('/api/admin/ig/compose', requireAdmin, (req, res) => {
   const args = req.query.uid ? [String(req.query.uid)] : [];
   const row = db
     .prepare(
-      `SELECT p.*, c.slug AS cat_slug, c.name_fa AS cat_name, c.icon
+      `SELECT p.*, c.slug AS cat_slug, c.name_fa AS cat_name, c.icon, COALESCE(p.title_fa, p.title) AS title, p.title AS title_en
        FROM prompts p LEFT JOIN categories c ON c.id = p.category_id
        WHERE ${where} ORDER BY ${req.query.uid ? 'p.id' : 'p.featured DESC, RANDOM()'} LIMIT 1`
     )
@@ -439,9 +439,9 @@ app.get('/api/admin/ig/pick', requireAdmin, (req, res) => {
   const q = req.query.q ? '%' + String(req.query.q).toLowerCase() + '%' : null;
   const rows = db
     .prepare(
-      `SELECT p.uid, p.title, p.quality, c.name_fa AS cat_name FROM prompts p
+      `SELECT p.uid, COALESCE(p.title_fa, p.title) AS title, p.title AS title_en, p.quality, c.name_fa AS cat_name FROM prompts p
        LEFT JOIN categories c ON c.id = p.category_id
-       WHERE p.status='published' ${q ? 'AND lower(p.title) LIKE ?' : ''}
+       WHERE p.status='published' ${q ? 'AND lower(p.title || \' \' || IFNULL(p.title_fa, \'\')) LIKE ?' : ''}
        ORDER BY p.featured DESC, p.quality DESC LIMIT 40`
     )
     .all(...(q ? [q] : []));

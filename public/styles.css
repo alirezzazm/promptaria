@@ -571,3 +571,6 @@ pre.fa-pre {
   .builder-out { position: static; }
   .bf-row { grid-template-columns: 1fr; }
 }
+
+/* original English name under a translated prompt title */
+.title-en { margin: -6px 0 14px; color: var(--dim); font-size: 13.5px; font-family: inherit; text-align: right; }

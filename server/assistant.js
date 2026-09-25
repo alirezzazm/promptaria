@@ -265,7 +265,7 @@ function understand(query) {
  * Finding prompts
  * ------------------------------------------------------------------ */
 const SEL = `
-  SELECT p.uid, p.slug, p.title, p.summary, p.body, p.difficulty, p.quality, p.copies, p.views,
+  SELECT p.uid, p.slug, COALESCE(p.title_fa, p.title) AS title, p.title AS title_en, p.summary, p.body, p.difficulty, p.quality, p.copies, p.views,
          p.tags, p.featured, c.slug AS cat_slug, c.name_fa AS cat_name, c.icon
   FROM prompts p LEFT JOIN categories c ON c.id = p.category_id
   WHERE p.status = 'published'`;

@@ -98,4 +98,14 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 `);
 
+/* The scraped corpus arrives with English titles. `title_fa` holds the Persian
+ * title shown to visitors; `title` stays the original, for admin, dedupe and
+ * people who search the English name. Slugs are never recomputed from it, so
+ * adding a translation does not move a page Google has already indexed. */
+try {
+  db.exec('ALTER TABLE prompts ADD COLUMN title_fa TEXT');
+} catch {
+  /* already there */
+}
+
 module.exports = db;
