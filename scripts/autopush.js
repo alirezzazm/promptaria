@@ -51,9 +51,26 @@ function push(log = console.log) {
     return { pushed: 0, reason: 'up-to-date' };
   }
 
+  // Try the plain push first: Git's credential manager may already hold a
+  // credential from a manual push on this machine, in which case no token file
+  // is needed at all. GIT_TERMINAL_PROMPT=0 makes it fail fast instead of
+  // blocking on a prompt no scheduled task can answer.
+  try {
+    execFileSync('git', ['push', 'origin', 'HEAD:main'], {
+      cwd: ROOT,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+    });
+    log(`      pushed ${count} commit(s) using the stored git credential`);
+    return { pushed: count, reason: 'credential-manager' };
+  } catch {
+    // No stored credential — fall through to the token file.
+  }
+
   const token = readToken();
   if (!token) {
-    log(`      ${count} commit(s) waiting — no token, add one to .github-token to push automatically`);
+    log(`      ${count} commit(s) waiting — no stored credential and no token in .github-token`);
     return { pushed: 0, reason: 'no-token', waiting: count };
   }
 
