@@ -68,7 +68,7 @@ function renderKit(kit) {
   db.prepare('UPDATE post_kits SET opened = opened + 1 WHERE token = ?').run(kit.token);
 
   return `<!doctype html>
-<html lang="fa" dir="rtl">
+<html lang="fa" dir="rtl" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -220,7 +220,7 @@ function renderKit(kit) {
 
 function renderExpired() {
   return `<!doctype html>
-<html lang="fa" dir="rtl"><head><meta charset="utf-8">
+<html lang="fa" dir="rtl" data-theme="dark"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>لینک منقضی شده</title><meta name="robots" content="noindex,nofollow">
 <link rel="stylesheet" href="/styles.css"></head>

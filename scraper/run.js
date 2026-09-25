@@ -4,6 +4,7 @@ const { ADAPTERS } = require('./adapters');
 const SOURCES = require('./sources');
 const { enrich, uid, bodyHash } = require('../server/lib');
 const { ensureCategories } = require('../server/categories');
+const { imageGuide, noteFa } = require('../server/image-guide');
 
 function syncSources() {
   const up = db.prepare(`
@@ -23,7 +24,9 @@ const getCatId = (slug) => {
 };
 
 function upsertPrompt(raw, src, srcRow) {
+  if (raw.inputNote) raw.inputNote = noteFa(raw.inputNote);
   const e = enrich(raw, src.trust || 70);
+  if (raw.imageUrl) Object.assign(e, imageGuide({ title: raw.title, inputNote: raw.inputNote }));
   const id = uid(src.key, e.title, e.body);
   const hash = bodyHash(e.body);
 
@@ -32,18 +35,21 @@ function upsertPrompt(raw, src, srcRow) {
   if (dupe && dupe.uid !== id) return 'skipped';
 
   const existing = db.prepare('SELECT id, body_hash FROM prompts WHERE uid = ?').get(id);
-  const catId = getCatId(e.categorySlug) || getCatId('general');
+  // A source can pin its category: keyword guessing files "turn this photo into
+  // a figure" under general, but every entry of an image gallery is an image prompt.
+  const catId = getCatId(src.category || e.categorySlug) || getCatId('general');
 
   if (existing) {
     if (existing.body_hash === hash) return 'skipped';
     db.prepare(
       `UPDATE prompts SET title=?, body=?, summary=?, how_to=?, tips=?, variables=?, example_use=?,
        expected_out=?, best_models=?, tags=?, category_id=?, difficulty=?, lang=?, quality=?,
-       body_hash=?, source_url=?, updated_at=datetime('now') WHERE id=?`
+       body_hash=?, source_url=?, image_url=?, input_note=COALESCE(input_note, ?), updated_at=datetime('now') WHERE id=?`
     ).run(
       e.title, e.body, e.summary, e.how_to, JSON.stringify(e.tips), JSON.stringify(e.variables),
       e.example_use, e.expected_out, JSON.stringify(e.best_models), JSON.stringify(e.tags),
-      catId, e.difficulty, e.lang, e.quality, hash, raw.sourceUrl || src.home_url, existing.id
+      catId, e.difficulty, e.lang, e.quality, hash, raw.sourceUrl || src.home_url,
+      raw.imageUrl || null, raw.inputNote || null, existing.id
     );
     return 'updated';
   }
@@ -51,13 +57,14 @@ function upsertPrompt(raw, src, srcRow) {
   db.prepare(
     `INSERT INTO prompts (uid, title, slug, body, summary, how_to, tips, variables, example_use,
       expected_out, best_models, tags, category_id, difficulty, lang, quality, status,
-      source_id, source_url, source_author, body_hash)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+      source_id, source_url, source_author, body_hash, image_url, input_note)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   ).run(
     id, e.title, e.slug, e.body, e.summary, e.how_to, JSON.stringify(e.tips), JSON.stringify(e.variables),
     e.example_use, e.expected_out, JSON.stringify(e.best_models), JSON.stringify(e.tags),
     catId, e.difficulty, e.lang, e.quality, arrivalStatus(e.title, e.body),
-    srcRow.id, raw.sourceUrl || src.home_url, raw.author || '', hash
+    srcRow.id, raw.sourceUrl || src.home_url, raw.author || '', hash,
+    raw.imageUrl || null, raw.inputNote || null
   );
   return 'added';
 }
@@ -154,6 +161,13 @@ async function runAll({ only = null, log = console.log } = {}) {
          ORDER BY quality DESC, length(body) DESC LIMIT 24)`
     ).run();
     log('shelf منتخب auto-filled');
+  }
+
+  // New image prompts need their card picture; a failure here never fails the run.
+  try {
+    await require('../scripts/thumbs').make({ log });
+  } catch (e) {
+    log('thumbnails skipped: ' + e.message);
   }
 
   db.prepare("INSERT INTO settings (key, value) VALUES ('last_scrape', datetime('now')) ON CONFLICT(key) DO UPDATE SET value=datetime('now')").run();

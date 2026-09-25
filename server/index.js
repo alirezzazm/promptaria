@@ -87,6 +87,7 @@ function publicPrompt(row, full = false) {
     likes: row.likes,
     updated_at: row.updated_at,
     length: row.body ? row.body.length : 0,
+    image: row.image_url ? `/img/${row.uid}.jpg` : null,
   };
   if (!full) return base;
   return {
@@ -547,7 +548,7 @@ app.get('/ig/auto/:token', (req, res) => {
   const payload = JSON.stringify({ token: job.job_token, slides: JSON.parse(job.slides) })
     .replace(/</g, '\\u003c');
   res.type('html').set('Cache-Control', 'no-store').send(`<!doctype html>
-<html lang="fa" dir="rtl"><head><meta charset="utf-8">
+<html lang="fa" dir="rtl" data-theme="dark"><head><meta charset="utf-8">
 <title>render</title>
 <link rel="stylesheet" href="/styles.css">
 <style>body{margin:0;background:#0a0a12}canvas{display:none}</style>
@@ -689,6 +690,17 @@ app.get('/c/:slug', (req, res) => {
   const page = Math.max(1, Number(req.query.page) || 1);
   const out = seo.renderCategory(req.params.slug, page);
   return out ? html(res, out) : html(res, seo.render404(), 404);
+});
+
+// Thumbnails of image prompts (scripts/thumbs.js). Only files named by a uid
+// are served, and a thumb only exists for a published prompt.
+const THUMBS = path.join(__dirname, '..', 'data', 'thumbs');
+app.get('/img/:uid.jpg', (req, res) => {
+  const uid = String(req.params.uid);
+  if (!/^[a-z0-9]{6,40}$/i.test(uid)) return res.status(404).end();
+  res.sendFile(path.join(THUMBS, uid + '.jpg'), { maxAge: '30d', immutable: true }, (err) => {
+    if (err && !res.headersSent) res.status(404).end();
+  });
 });
 
 // /p/<slug>-<uid> — the uid is the last dash-separated segment, so a changed

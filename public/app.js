@@ -145,8 +145,10 @@ function readingProgress() {
  * Home / category live filtering (no page reload)
  * ------------------------------------------------------------------ */
 const cardHtml = (p) => `
-<article class="card${p.featured && !p.original ? ' feat' : ''}">
-  <a class="card-link" href="/p/${esc(p.slug)}-${esc(p.id)}">
+<article class="card${p.featured && !p.original ? ' feat' : ''}${p.image ? ' has-img' : ''}">
+  <a class="card-link" href="/p/${esc(p.slug)}-${esc(p.id)}">${
+    p.image ? `<div class="thumb"><img src="${esc(p.image)}" alt="" loading="lazy" decoding="async"></div>` : ''
+  }
     <div class="top">
       <div class="cat-ico" aria-hidden="true">${esc(p.category_icon || '✦')}</div>
       <div class="tw">
@@ -498,7 +500,24 @@ function wireBuilder() {
 }
 
 /* ------------------------------------------------------------------ */
+// Light/dark toggle. No stored choice means "follow the system"; the tiny
+// script in <head> applies a stored one before first paint, so no flash.
+function wireTheme() {
+  const btn = $('#themeBtn');
+  if (!btn) return;
+  btn.addEventListener('click', () => {
+    const root = document.documentElement;
+    const cur = root.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    const next = cur === 'dark' ? 'light' : 'dark';
+    root.dataset.theme = next;
+    try {
+      localStorage.setItem('pa-theme', next);
+    } catch {}
+  });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
+  wireTheme();
   wireCopy();
   wireCatalog();
   wireAssistant();

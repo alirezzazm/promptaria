@@ -108,4 +108,15 @@ try {
   /* already there */
 }
 
+/* Image prompts carry the picture they produced (image_url, a remote original
+ * served through /img/:uid so visitors never depend on GitHub directly) and,
+ * when the prompt edits a photo, what the user has to upload first. */
+for (const col of ['image_url TEXT', 'input_note TEXT']) {
+  try {
+    db.exec('ALTER TABLE prompts ADD COLUMN ' + col);
+  } catch {
+    /* already there */
+  }
+}
+
 module.exports = db;

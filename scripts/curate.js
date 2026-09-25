@@ -43,6 +43,20 @@ const GROUPS = {
     3009, 3010, 3011, 3012, 3014, 3015, 3016, 3017, 3018, 3019, 3020, 3021, 3022, // learnprompting
     2167,
   ],
+
+  // Awesome Copilot agents that only run inside a vendor's product or an
+  // editor with specific MCP tools (CAST, JFrog, LaunchDarkly, Diffblue, the
+  // gem-* pipeline…). Pasted into ChatGPT they do nothing.
+  toolBound: [
+    3425, 3426, 3427, 3428, 3430, 3433, 3439, 3443, 3444, 3447, 3448, 3449, 3452, 3454,
+    3459, 3462, 3467, 3473, 3474, 3481, 3482, 3483, 3484, 3485, 3486, 3487, 3488, 3489,
+    3490, 3491, 3492, 3498, 3502, 3504, 3506, 3507, 3509, 3512, 3515, 3516, 3517,
+  ],
+
+  // Image prompts wrong for a Persian general audience: 3286 recreates the 9/11
+  // attack by coordinates and minute, 3290 is a lingerie "slightly sexy" sheet,
+  // 3339 stamps a politician's name over a photo.
+  sensitive: [3286, 3290, 3339],
 };
 
 // Raw MDX documentation pages from the DAIR guide: their bodies start with

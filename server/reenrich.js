@@ -9,6 +9,8 @@
 const db = require('./db');
 const { enrich } = require('./lib');
 const { ensureCategories } = require('./categories');
+const { imageGuide } = require('./image-guide');
+const SOURCES = require('../scraper/sources');
 
 ensureCategories();
 
@@ -26,7 +28,19 @@ const authored = new Set(
 
 // Their card summary is hand-written too (seed-fa owns it), so it is kept for the
 // same reason — regenerating it would put the structural template back every run.
-const rows = db.prepare('SELECT id, title, body, tags, source_id, category_id, summary FROM prompts').all();
+// Sources that pin a category (the image gallery) keep it: the keyword guess
+// is exactly what the pin exists to overrule.
+const pinned = new Set(
+  db
+    .prepare('SELECT id, key FROM sources')
+    .all()
+    .filter((s) => SOURCES.some((x) => x.key === s.key && x.category))
+    .map((s) => s.id)
+);
+
+const rows = db
+  .prepare('SELECT id, title, title_fa, body, tags, source_id, category_id, summary, image_url, input_note FROM prompts')
+  .all();
 const upd = db.prepare(
   `UPDATE prompts SET summary=?, how_to=?, tips=?, variables=?, example_use=?, expected_out=?,
      best_models=?, difficulty=?, lang=?, quality=?, category_id=? WHERE id=?`
@@ -40,10 +54,12 @@ for (const r of rows) {
     tags = JSON.parse(r.tags) || [];
   } catch {}
   const e = enrich({ title: r.title, body: r.body, tags }, trustBySource.get(r.source_id) || 70);
+  // image prompts get their own guide (server/image-guide.js), not the chat one
+  if (r.image_url) Object.assign(e, imageGuide({ title: r.title_fa || r.title, inputNote: r.input_note }));
   upd.run(
     authored.has(r.id) && r.summary ? r.summary : e.summary, e.how_to, JSON.stringify(e.tips), JSON.stringify(e.variables), e.example_use,
     e.expected_out, JSON.stringify(e.best_models), e.difficulty, e.lang, e.quality,
-    authored.has(r.id) ? r.category_id : cats.get(e.categorySlug) || cats.get('general'),
+    authored.has(r.id) || pinned.has(r.source_id) ? r.category_id : cats.get(e.categorySlug) || cats.get('general'),
     r.id
   );
   n++;

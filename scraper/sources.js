@@ -4,7 +4,51 @@
  * `trust` (0-100) feeds the quality score. `limit` caps items per run.
  * Everything here is admin-facing metadata; the public site never shows it.
  */
+/*
+ * Blog listicles (Semrush, Writesonic, HubSpot, GreatAIPrompts, Learn Prompting)
+ * were dropped: the article adapter cut author bios and "keep reading" boxes
+ * out of them as often as real prompts — 85 of those had to be hidden by hand.
+ * Structured repos only, from here on. Their rows stay in the database.
+ */
 module.exports = [
+  {
+    key: 'nano-banana-gallery',
+    name: 'Awesome Nano Banana (PicoTrex)',
+    home_url: 'https://github.com/PicoTrex/Awesome-Nano-Banana-images',
+    kind: 'readme-cases',
+    trust: 90,
+    license: 'Apache-2.0',
+    fetchUrl: 'https://raw.githubusercontent.com/PicoTrex/Awesome-Nano-Banana-images/main/README_en.md',
+    defaultTags: ['nano-banana', 'gemini', 'image'],
+    category: 'design',
+    limit: 200,
+  },
+  {
+    key: 'awesome-copilot-agents',
+    name: 'Awesome Copilot — agents (GitHub)',
+    home_url: 'https://github.com/github/awesome-copilot',
+    kind: 'github-files',
+    trust: 91,
+    license: 'MIT',
+    repo: 'github/awesome-copilot',
+    branch: 'main',
+    pathPattern: '^agents/.+\\.agent\\.md$',
+    limit: 110,
+    defaultTags: ['agent', 'developers'],
+  },
+  {
+    key: 'thesis-summary-fa',
+    name: 'Persian Thesis Summary Prompt (hamidtech)',
+    home_url: 'https://github.com/hamidtech/Advanced-AI-Prompting-Guidelines-For-Research',
+    kind: 'single',
+    trust: 86,
+    license: 'MIT',
+    fetchUrl: 'https://raw.githubusercontent.com/hamidtech/Advanced-AI-Prompting-Guidelines-For-Research/main/ThesisSummaryPrompt.md',
+    singleTitle: 'خلاصه‌ی مقاله برای فصل دوم پایان‌نامه',
+    from: '## بخش فارسی',
+    until: '## English Section',
+    defaultTags: ['پایان‌نامه', 'پژوهش'],
+  },
   {
     key: 'awesome-chatgpt-prompts',
     name: 'Awesome ChatGPT Prompts',
@@ -136,21 +180,6 @@ module.exports = [
     defaultTags: ['education', 'tutor'],
   },
   {
-    key: 'greataiprompts',
-    name: 'GreatAIPrompts',
-    home_url: 'https://www.greataiprompts.com',
-    kind: 'html-article',
-    trust: 68,
-    license: 'editorial',
-    container: 'main, article, .entry-content',
-    pages: [
-      'https://www.greataiprompts.com/prompts/best-chatgpt-prompts/',
-      'https://www.greataiprompts.com/prompts/chatgpt-prompts-for-writing/',
-      'https://www.greataiprompts.com/prompts/chatgpt-prompts-for-marketing/',
-    ],
-    limit: 60,
-  },
-  {
     key: 'promptingguide',
     name: 'Prompt Engineering Guide (DAIR.AI)',
     home_url: 'https://www.promptingguide.ai',
@@ -193,47 +222,6 @@ module.exports = [
     limit: 40,
   },
   {
-    key: 'semrush',
-    name: 'Semrush Blog',
-    home_url: 'https://www.semrush.com',
-    kind: 'html-article',
-    trust: 74,
-    license: 'editorial',
-    container: 'main, article',
-    pages: [
-      'https://www.semrush.com/blog/chatgpt-prompts/',
-    ],
-    defaultTags: ['marketing'],
-    limit: 50,
-  },
-  {
-    key: 'writesonic',
-    name: 'Writesonic Blog',
-    home_url: 'https://writesonic.com',
-    kind: 'html-article',
-    trust: 70,
-    license: 'editorial',
-    container: 'main, article, .entry-content',
-    pages: [
-      'https://writesonic.com/blog/chatgpt-prompts',
-    ],
-    limit: 60,
-  },
-  {
-    key: 'hubspot',
-    name: 'HubSpot Blog',
-    home_url: 'https://blog.hubspot.com',
-    kind: 'html-article',
-    trust: 76,
-    license: 'editorial',
-    container: 'main, article, .blog-post__body',
-    pages: [
-      'https://blog.hubspot.com/marketing/chatgpt-prompts',
-    ],
-    defaultTags: ['marketing'],
-    limit: 50,
-  },
-  {
     key: 'openai-cookbook',
     name: 'OpenAI Cookbook',
     home_url: 'https://cookbook.openai.com',
@@ -258,27 +246,6 @@ module.exports = [
     pathPattern: '^pages/.+\\.en\\.mdx$',
     limit: 60,
     defaultTags: ['prompt-engineering'],
-  },
-  {
-    key: 'learnprompting',
-    name: 'Learn Prompting',
-    home_url: 'https://learnprompting.org',
-    kind: 'html-article',
-    trust: 88,
-    license: 'CC-BY-SA',
-    container: 'main, article',
-    pages: [
-      'https://learnprompting.org/docs/basics/roles',
-      'https://learnprompting.org/docs/basics/few_shot',
-      'https://learnprompting.org/docs/basics/formalizing',
-      'https://learnprompting.org/docs/basics/combining_techniques',
-      'https://learnprompting.org/docs/intermediate/chain_of_thought',
-      'https://learnprompting.org/docs/intermediate/zero_shot_cot',
-      'https://learnprompting.org/docs/intermediate/self_consistency',
-      'https://learnprompting.org/docs/advanced_applications/writing_essay',
-    ],
-    defaultTags: ['prompt-engineering', 'education'],
-    limit: 60,
   },
   {
     key: 'fabric-patterns',

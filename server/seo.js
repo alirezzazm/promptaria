@@ -49,17 +49,20 @@ const catUrl = (slug) => `${SITE}/c/${slug}`;
 /* ------------------------------------------------------------------ *
  * <head>
  * ------------------------------------------------------------------ */
-function head({ title, description, canonical, keywords = [], type = 'website', extraLd = [], noindex = false, published, modified }) {
-  const ogImage = `${SITE}/og.svg`;
+function head({ title, description, canonical, keywords = [], type = 'website', extraLd = [], noindex = false, published, modified, image }) {
+  // An image prompt shares its own picture; everything else the site card.
+  const ogImage = image || `${SITE}/og.svg`;
   return `
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<script>try{var t=localStorage.getItem('pa-theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}</script>
 <title>${esc(title)}</title>
 <meta name="description" content="${esc(description)}">
 ${keywords.length ? `<meta name="keywords" content="${esc(keywords.join('، '))}">` : ''}
 <link rel="canonical" href="${esc(canonical)}">
 ${noindex ? '<meta name="robots" content="noindex,nofollow">' : '<meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">'}
-<meta name="theme-color" content="#0a0a12">
+<meta name="theme-color" content="#f7f3ec" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#14121c" media="(prefers-color-scheme: dark)">
 <meta name="author" content="${NAME}">
 <link rel="alternate" hreflang="fa-IR" href="${esc(canonical)}">
 <link rel="alternate" hreflang="x-default" href="${esc(canonical)}">
@@ -71,8 +74,7 @@ ${noindex ? '<meta name="robots" content="noindex,nofollow">' : '<meta name="rob
 <meta property="og:description" content="${esc(description)}">
 <meta property="og:url" content="${esc(canonical)}">
 <meta property="og:image" content="${ogImage}">
-<meta property="og:image:width" content="1200">
-<meta property="og:image:height" content="630">
+${image ? '' : '<meta property="og:image:width" content="1200">\n<meta property="og:image:height" content="630">'}
 ${published ? `<meta property="article:published_time" content="${esc(published)}">` : ''}
 ${modified ? `<meta property="article:modified_time" content="${esc(modified)}">` : ''}
 
@@ -160,6 +162,9 @@ const header = (active = '') => `
       <!-- No admin link anywhere in the public chrome: /admin is reached by
            typing it. The password is still what protects the panel. -->
     </nav>
+    <button class="theme-btn" id="themeBtn" type="button" aria-label="حالت روشن یا تیره" title="حالت روشن / تیره">
+      <span class="sun" aria-hidden="true">☀</span><span class="moon" aria-hidden="true">☾</span>
+    </button>
   </div>
 </header>`;
 
@@ -200,8 +205,11 @@ const badge = (p) =>
       : '';
 
 const cardHtml = (p) => `
-<article class="card${p.featured && !isOriginal(p) ? ' feat' : ''}" data-id="${esc(p.uid)}">
-  <a class="card-link" href="/p/${esc(p.slug)}-${esc(p.uid)}">
+<article class="card${p.featured && !isOriginal(p) ? ' feat' : ''}${p.image_url ? ' has-img' : ''}" data-id="${esc(p.uid)}">
+  <a class="card-link" href="/p/${esc(p.slug)}-${esc(p.uid)}">${
+    p.image_url ? `
+    <div class="thumb"><img src="/img/${esc(p.uid)}.jpg" alt="" loading="lazy" decoding="async"></div>` : ''
+  }
     <div class="top">
       <div class="cat-ico" aria-hidden="true">${esc(p.icon || '✦')}</div>
       <div class="tw">
@@ -223,7 +231,7 @@ const cardHtml = (p) => `
  * ------------------------------------------------------------------ */
 const SEL = `
   SELECT p.id, p.uid, p.slug, COALESCE(p.title_fa, p.title) AS title, p.title AS title_en, p.summary, p.difficulty, p.featured, p.views, p.copies, p.source_id,
-         p.quality, p.updated_at, p.created_at, c.slug AS cat_slug, c.name_fa AS cat_name, c.icon
+         p.quality, p.updated_at, p.created_at, p.image_url, c.slug AS cat_slug, c.name_fa AS cat_name, c.icon
   FROM prompts p LEFT JOIN categories c ON c.id = p.category_id
   WHERE p.status = 'published'`;
 
@@ -249,6 +257,11 @@ function renderHome() {
   // open with.
   const items = db
     .prepare(`${SEL} ORDER BY (p.lang = 'fa') DESC, p.featured DESC, p.quality DESC, p.copies DESC LIMIT 24`)
+    .all();
+  // Image prompts are the ones a picture sells best, so the home page opens a
+  // strip of them, most-used first — each shows the image it produced.
+  const gallery = db
+    .prepare(`${SEL} AND p.image_url IS NOT NULL ORDER BY p.copies DESC, p.views DESC, p.quality DESC LIMIT 12`)
     .all();
 
   const title = `Promptaria — کتابخانه پرامپت‌های هوش مصنوعی به فارسی | ${total.toLocaleString('en-US')} پرامپت آماده`;
@@ -319,6 +332,27 @@ ${header('home')}
     ${cats.map((c) => `<a class="chip" href="/c/${esc(c.slug)}" data-cat="${esc(c.slug)}" title="${esc(c.description)}">${esc(c.icon)} ${esc(c.name_fa)} <span class="n">${faNum(c.count)}</span></a>`).join('')}
   </nav>
 
+${
+    gallery.length
+      ? `
+  <section class="wrap gallery-sec" aria-labelledby="galH">
+    <div class="sec-head">
+      <h2 id="galH">پرامپت‌های تصویری <span>ببین چه می‌سازد، بعد کپی کن</span></h2>
+      <a class="more" href="/c/design">همه‌ی پرامپت‌های تصویری ←</a>
+    </div>
+    <div class="gallery">${gallery
+      .map(
+        (p) => `
+      <a class="g-item" href="/p/${esc(p.slug)}-${esc(p.uid)}">
+        <img src="/img/${esc(p.uid)}.jpg" alt="" loading="lazy" decoding="async">
+        <span>${esc(p.title)}</span>
+      </a>`
+      )
+      .join('')}
+    </div>
+  </section>`
+      : ''
+  }
   <div class="wrap">
     <div class="toolbar">
       <p class="count" id="count"><b>${faNum(total)}</b> پرامپت</p>
@@ -504,6 +538,7 @@ function renderPrompt(uid) {
       description,
       canonical,
       type: 'article',
+      image: p.image_url ? `${SITE}/img/${p.uid}.jpg` : undefined,
       published: iso(p.created_at),
       modified: iso(p.updated_at),
       keywords: [p.title, `پرامپت ${p.cat_name}`, ...tags, 'ChatGPT', 'پرامپت فارسی'],
@@ -594,7 +629,20 @@ ${header()}
       <p class="lede">${esc(p.summary)}</p>
     </header>
 
-    <div class="sh-body">
+    <div class="sh-body">${
+      p.image_url
+        ? `
+      <figure class="result-fig">
+        <img src="/img/${esc(p.uid)}.jpg" alt="${esc('نمونه‌ی خروجی پرامپت ' + p.title)}" loading="eager">
+        <figcaption>نمونه‌ای از تصویری که این پرامپت ساخته است${p.source_author ? ` — اثر <bdi dir="ltr">${esc(p.source_author)}</bdi>` : ''}</figcaption>
+      </figure>`
+        : ''
+    }${
+      p.input_note
+        ? `
+      <p class="need-input"><span aria-hidden="true">⤒</span> <b>قبل از پرامپت:</b> ${esc(p.input_note)}</p>`
+        : ''
+    }
       <section class="sec">
         <h2><span class="ic" aria-hidden="true">◇</span> متن پرامپت</h2>
         <div class="prompt-box">

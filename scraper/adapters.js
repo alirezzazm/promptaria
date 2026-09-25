@@ -104,8 +104,9 @@ async function adapterGithubFiles(src) {
           .join('/')}`
       );
       let body = raw
+        .replace(/\r\n/g, '\n')
         .replace(/^---\n[\s\S]*?\n---\n/, '')            // yaml front-matter
-        .replace(/^#{1,3}\s.*\n/, '')                     // leading title heading
+        .replace(/^\s*#{1,3}\s.*\n/, '')                  // leading title heading
         .replace(/^!\[.*?\]\(.*?\)\s*$/gm, '')            // images
         .trim();
       // Some repos give every file the same boilerplate heading (fabric's are all
@@ -115,7 +116,11 @@ async function adapterGithubFiles(src) {
       const generic = /^(identity|purpose|identity and purpose|overview|instructions?|system|prompt|role|about|steps|output|introduction)$/i;
       const folder = f.path.split('/').slice(-2, -1)[0] || '';
       const fromPath = src.titleFromFolder && folder ? titleFromPath(folder) : titleFromPath(f.path);
-      const title = !heading || generic.test(heading) ? fromPath : heading;
+      // A front-matter `name:` is the author's own title; prefer it over headings,
+      // which in agent files are often "Your Expertise" or "Workflow".
+      const fm = (raw.match(/^---\r?\n([\s\S]*?)\r?\n---/) || [])[1] || '';
+      const fmName = (fm.match(/^name:\s*['"]?([^'"\r\n]{3,120}?)['"]?\s*$/m) || [])[1];
+      const title = fmName ? fmName.trim() : !heading || generic.test(heading) ? fromPath : heading;
       if (!okBody(body)) continue;
       out.push({
         title,
@@ -232,7 +237,11 @@ async function adapterJsonCards(src) {
  * 5. Single-file prompt
  * ------------------------------------------------------------------ */
 async function adapterSingle(src) {
-  const body = (await get(src.fetchUrl)).trim().slice(0, MAX_LEN);
+  let body = (await get(src.fetchUrl)).replace(/\r\n/g, '\n');
+  // bilingual files: keep the text between two headings, e.g. just the Persian half
+  if (src.from) body = body.slice(Math.max(0, body.indexOf(src.from) + src.from.length));
+  if (src.until && body.includes(src.until)) body = body.slice(0, body.indexOf(src.until));
+  body = body.trim().slice(0, MAX_LEN);
   if (body.length < MIN_LEN) return [];
   return [{ title: src.singleTitle || src.name, body, tags: src.defaultTags || [], sourceUrl: src.home_url }];
 }
@@ -301,7 +310,43 @@ async function adapterHtmlArticle(src) {
   return out;
 }
 
+/* ------------------------------------------------------------------ *
+ * 8. Gallery README: "### Case N: [Title](link) (by [@author](...))" blocks,
+ *    each with an output image and a fenced prompt (Awesome-Nano-Banana style)
+ * ------------------------------------------------------------------ */
+async function adapterReadmeCases(src) {
+  const md = await get(src.fetchUrl);
+  const rawBase = src.fetchUrl.replace(/[^/]+$/, '');
+  const out = [];
+  for (const b of md.split(/\n(?=### )/).slice(1)) {
+    const head = b.split('\n', 1)[0];
+    const m = head.match(/^###\s+(?:[^:[]*:\s*)?\[([^\]]+)\]\(([^)]+)\)(?:.*?\[@([^\]]+)\])?/);
+    if (!m) continue;
+    const fence = b.match(/\*\*Prompt:?\*\*:?\s*\n+```[a-z]*\n([\s\S]*?)\n```/i);
+    if (!fence) continue;
+    const body = fence[1].trim();
+    // shorter than the text adapters allow: a good image prompt is often one line
+    if (body.length < 40 || body.length > MAX_LEN) continue;
+    const imgs = [...b.matchAll(/<img[^>]+src="([^"]+)"[^>]*alt="([^"]*)"/g)];
+    const pick = imgs.find((x) => /output/i.test(x[2] + x[1])) || imgs[0];
+    const img = pick ? (/^https?:/.test(pick[1]) ? pick[1] : rawBase + pick[1].replace(/^\.\//, '')) : '';
+    const input = (b.match(/\*\*Input:?\*\*:?\s*(.+)/) || [])[1] || '';
+    out.push({
+      title: m[1].replace(/\\_/g, '_').trim(),
+      body,
+      tags: src.defaultTags || [],
+      sourceUrl: m[2].replace(/\*/g, ''),
+      author: m[3] ? '@' + m[3].replace(/\\_/g, '_') : '',
+      imageUrl: img,
+      inputNote: input.trim(),
+    });
+    if (out.length >= (src.limit || 200)) break;
+  }
+  return out;
+}
+
 const ADAPTERS = {
+  'readme-cases': adapterReadmeCases,
   csv: adapterCsv,
   'html-article': adapterHtmlArticle,
   'github-files': adapterGithubFiles,
