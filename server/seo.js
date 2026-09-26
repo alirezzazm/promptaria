@@ -496,7 +496,12 @@ function renderPrompt(uid) {
     .get(uid);
   if (!p) return null;
 
-  db.prepare('UPDATE prompts SET views = views + 1 WHERE id = ?').run(p.id);
+  try {
+    db.prepare('UPDATE prompts SET views = views + 1 WHERE id = ?').run(p.id);
+  } catch (e) {
+    // a view counter must never take the page down
+    console.warn('view count skipped:', e.message);
+  }
 
   const parse = (s, f) => {
     try {

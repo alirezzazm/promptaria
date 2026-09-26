@@ -9,6 +9,14 @@ fs.mkdirSync(DATA_DIR, { recursive: true });
 const db = new DatabaseSync(path.join(DATA_DIR, 'promptaria.db'));
 db.exec('PRAGMA journal_mode = WAL;');
 db.exec('PRAGMA foreign_keys = ON;');
+// The maintain task and the scraper write from other processes; without a busy timeout a
+// page view that hits their write lock fails at once with "database is locked".
+db.exec('PRAGMA busy_timeout = 5000;');
+db.exec('PRAGMA synchronous = NORMAL;');
+// Keep the WAL from growing without bound while long readers hold it open.
+setInterval(() => {
+  try { db.exec('PRAGMA wal_checkpoint(TRUNCATE);'); } catch (_) { /* busy: try next hour */ }
+}, 60 * 60e3).unref();
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS categories (
